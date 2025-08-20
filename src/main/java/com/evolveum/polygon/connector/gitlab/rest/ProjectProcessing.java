@@ -15,11 +15,6 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-/**
- * @author Lukas Skublik
- *
- */
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -27,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.identityconnectors.framework.common.exceptions.ConnectorIOException;
 import org.identityconnectors.framework.common.exceptions.InvalidAttributeValueException;
@@ -50,6 +44,10 @@ import org.identityconnectors.framework.common.objects.filter.Filter;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * @author Lukas Skublik
+ *
+ */
 public class ProjectProcessing extends GroupOrProjectProcessing {
 
 	private static final String ATTR_DEFAULT_BRANCH = "default_branch";
@@ -351,11 +349,6 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 				.setReadable(true);
 		projectObjClassBuilder.addAttributeInfo(attrSharedWithGroupsBuilder.build());
 
-		AttributeInfoBuilder attrMembersBuilder = new AttributeInfoBuilder(ATTR_MEMBERS_WITH_NAME);
-		attrMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(false).setUpdateable(false)
-				.setReadable(true);
-		projectObjClassBuilder.addAttributeInfo(attrMembersBuilder.build());
-
 		AttributeInfoBuilder attrSharedWithGroupsWithNameBuilder = new AttributeInfoBuilder(
 				ATTR_SHARED_WITH_GROUPS_WITH_NAME);
 		attrSharedWithGroupsWithNameBuilder.setType(String.class).setMultiValued(true).setCreateable(false)
@@ -367,26 +360,6 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 		attrTagListBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
 				.setReadable(true).setReturnedByDefault(true);
 		projectObjClassBuilder.addAttributeInfo(attrTagListBuilder.build());
-
-		AttributeInfoBuilder attrGuestMembersBuilder = new AttributeInfoBuilder(ATTR_GUEST_MEMBERS);
-		attrGuestMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		projectObjClassBuilder.addAttributeInfo(attrGuestMembersBuilder.build());
-
-		AttributeInfoBuilder attrReporterMembersBuilder = new AttributeInfoBuilder(ATTR_REPORTER_MEMBERS);
-		attrReporterMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		projectObjClassBuilder.addAttributeInfo(attrReporterMembersBuilder.build());
-
-		AttributeInfoBuilder attrDeveloperMembersBuilder = new AttributeInfoBuilder(ATTR_DEVELOPER_MEMBERS);
-		attrDeveloperMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		projectObjClassBuilder.addAttributeInfo(attrDeveloperMembersBuilder.build());
-
-		AttributeInfoBuilder attrMasterMembersBuilder = new AttributeInfoBuilder(ATTR_MASTER_MEMBERS);
-		attrMasterMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		projectObjClassBuilder.addAttributeInfo(attrMasterMembersBuilder.build());
 
 		AttributeInfoBuilder attrSharedWithGroupsMaxGuestBuilder = new AttributeInfoBuilder(
 				ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST);
@@ -545,7 +518,7 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 				StringBuilder sbPath = new StringBuilder();
 				sbPath.append(PROJECTS).append("/").append(uid.getUidValue());
 				JSONObject project = (JSONObject) executeGetRequest(sbPath.toString(), null, options, false);
-				processingObjectFromGET(project, handler, sbPath.toString());
+				processingObjectFromGET(project, handler);
 
 			} else if (((EqualsFilter) query).getAttribute().getName().equals(ATTR_VISIBILITY)) {
 				List<Object> allValues = ((EqualsFilter) query).getAttribute().getValue();
@@ -587,91 +560,7 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 				throw new InvalidAttributeValueException(sb.toString());
 			}
 		} else if (query instanceof ContainsAllValuesFilter) {
-			if (((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_GUEST_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_REPORTER_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_DEVELOPER_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_MASTER_MEMBERS)) {
-
-				List<Object> allValues = ((ContainsAllValuesFilter) query).getAttribute().getValue();
-				if (allValues == null) {
-					StringBuilder sb = new StringBuilder();
-					sb.append("Searched attribute: ").append(((ContainsFilter) query).getAttribute().getName())
-							.append(" do not have value for query: ").append(query);
-					LOGGER.error(sb.toString());
-					throw new InvalidAttributeValueException(sb.toString());
-				}
-
-				for (Object value : allValues) {
-					if (value == null) {
-						invalidAttributeValue(((ContainsAllValuesFilter) query).getAttribute().getName(), query);
-					}
-				}
-				// Implemented the use of the "/memberships" route to optimize the query of the
-				// accesses of each user
-
-				String REGEX = "[\\[\\]]";
-				String uid = (((ContainsAllValuesFilter) query).getAttribute().getValue()).toString();
-
-				uid = uid.replaceAll(REGEX, "");
-
-				StringBuilder sbPath = new StringBuilder();
-				sbPath.append(USERS).append("/").append(uid).append("/").append(USERS_MEMBERSHIPS_URL);
-				String TYPE_MEMBERSHIPS_GROUP = "Project";
-				Map<Integer, Integer> projectByAccess = new HashMap<Integer, Integer>();
-
-				JSONArray projectWithMPMembers = new JSONArray();
-
-				Integer countOfSameMember = 0;
-
-				UserProcessing userProcessing = new UserProcessing(configuration, httpclient);
-				projectByAccess = userProcessing.getUserAccess(sbPath.toString(), TYPE_MEMBERSHIPS_GROUP);
-
-				Iterator<Integer> it = projectByAccess.keySet().iterator();
-
-				JSONObject project = new JSONObject();
-
-				while (it.hasNext()) {
-					Object projectID = it.next();
-
-					StringBuilder sbProjectPath = new StringBuilder();
-					sbProjectPath.append(PROJECTS).append("/").append(projectID);
-
-					URIBuilder uribuilderMember = createRequestForMembers(sbProjectPath.toString());
-					Map<Integer, List<String>> mapMembersProjects = getMembers(uribuilderMember);
-
-					List<String> membersProject = null;
-					if (((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_GUEST_MEMBERS)) {
-						membersProject = mapMembersProjects.get(10);
-					}
-					if (((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_REPORTER_MEMBERS)) {
-						membersProject = mapMembersProjects.get(20);
-					}
-					if (((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_DEVELOPER_MEMBERS)) {
-						membersProject = mapMembersProjects.get(30);
-					}
-					if (((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_MASTER_MEMBERS)) {
-						membersProject = mapMembersProjects.get(40);
-					}
-					if (membersProject != null) {
-						for (Object MPProjectMember : allValues) {
-
-							for (String projectMember : membersProject) {
-								if (projectMember.equals((String) MPProjectMember)) {
-									countOfSameMember++;
-									break;
-								}
-							}
-						}
-						if (countOfSameMember == allValues.size()) {
-							project = findProjectByID(projectID.toString(), options);
-							projectWithMPMembers.put(project);
-						}
-					}
-				}
-				LOGGER.info("projectWithMPMembers -  members: {0}", projectWithMPMembers);
-				processingObjectFromGET(projectWithMPMembers, handler);
-
-			} else if (((ContainsAllValuesFilter) query).getAttribute().getName()
+			if (((ContainsAllValuesFilter) query).getAttribute().getName()
 					.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST)
 					|| ((ContainsAllValuesFilter) query).getAttribute().getName()
 							.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_REPORTER)
@@ -762,19 +651,6 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 		}
 	}
 
-	private JSONObject findProjectByID(String projectID, OperationOptions options) {
-		Map<String, String> parameters = new HashMap<>();
-		parameters.put("with_custom_attributes", "no");
-		StringBuilder sbPath = new StringBuilder();
-
-		sbPath.append(PROJECTS).append("/").append(projectID);
-		JSONObject project = (JSONObject) executeGetRequest(sbPath.toString(), parameters, options, false);
-		if (project.getInt(UID) == Integer.parseInt(projectID)) {
-			return project;
-		}
-		return null;
-	}
-
 	private void addAttributeForSharedProjects(JSONObject object, ConnectorObjectBuilder builder) {
 
 		List<String> guestSharedWithGroup = new ArrayList<>();
@@ -836,13 +712,11 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 		}
 	}
 
-	private void processingObjectFromGET(JSONObject project, ResultsHandler handler, String sbPath) {
+	private void processingObjectFromGET(JSONObject project, ResultsHandler handler) {
 		byte[] avaratPhoto = getAvatarPhoto(project, ATTR_AVATAR_URL, ATTR_AVATAR);
 		ConnectorObjectBuilder builder = convertProjectJSONObjectToConnectorObject(project, avaratPhoto);
 		addAttributeForSharedProjects(project, builder);
-		addAttributeForMembers(builder, handler, sbPath);
 		ConnectorObject connectorObject = builder.build();
-		LOGGER.info("addAtributeMembers, connectorObject: {0}", connectorObject.toString());
 		handler.handle(connectorObject);
 	}
 
@@ -852,14 +726,12 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 			project = projects.getJSONObject(i);
 			StringBuilder sbPath = new StringBuilder();
 			sbPath.append(PROJECTS).append("/").append(project.get(UID));
-			processingObjectFromGET(project, handler, sbPath.toString());
+			processingObjectFromGET(project, handler);
 		}
 	}
 
 	public void updateDeltaMultiValues(Uid uid, Set<AttributeDelta> attributesDelta, OperationOptions options) {
-		updateDeltaMultiValuesForGroupOrProject(uid, attributesDelta, options, PROJECTS);
 		for (AttributeDelta attrDelta : attributesDelta) {
-
 			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST.equals(attrDelta.getName())) {
 				createOrDeleteSharingWithGroup(uid, attrDelta, 10);
 			}

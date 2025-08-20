@@ -108,16 +108,6 @@ public class ObjectProcessing {
 
 	protected GitlabRestConfiguration configuration;
 
-	public long firstStartTime;
-	public long firstEndTime;
-	public long secondStartTime;
-	public long secondEndTime;
-	public long thirdStartTime;
-	public long thirdEndTime;
-	public long firstDuration;
-	public long secondDuration;
-	public long thirdDuration;
-
 	public ObjectProcessing(GitlabRestConfiguration configuration, CloseableHttpClient httpclient) {
 		this.configuration = configuration;
 		this.httpclient = httpclient;
@@ -165,7 +155,6 @@ public class ObjectProcessing {
 					.append(e.getLocalizedMessage());
 			throw new ConnectorIOException(sb.toString(), e);
 		}
-
 	}
 
 	private JSONObject callRequest(HttpEntityEnclosingRequestBase request, JSONObject json, Boolean parseResult) {
@@ -201,30 +190,24 @@ public class ObjectProcessing {
 		request.setEntity(entity);
 
 		// execute request
-		CloseableHttpResponse response = execute(request);
-		LOGGER.info("response: {0}", response);
+		try (CloseableHttpResponse response = execute(request)) {
+			LOGGER.info("response: {0}", response);
 
-		processResponseErrors(response);
-		
+			processResponseErrors(response);
 
-		if (!parseResult) {
-			return null;
-		}
+			if (!parseResult) {
+				return null;
+			}
 
-		// result as output
-		HttpEntity responseEntity = response.getEntity();
-		try {
-			// String result = EntityUtils.toString(responseEntity);
+			// result as output
+			HttpEntity responseEntity = response.getEntity();
 			byte[] byteResult = EntityUtils.toByteArray(responseEntity);
 			String result = new String(byteResult, "ISO-8859-2");
-			responseClose(response);
 			LOGGER.info("result: {0}", result);
 			return new JSONObject(result);
 		} catch (IOException e) {
 			StringBuilder sb = new StringBuilder();
-			sb.append("Failed creating result from HttpEntity: ").append(responseEntity).append(";")
-					.append(e.getLocalizedMessage());
-			responseClose(response);
+			sb.append("Failed processing HTTP response: ").append(e.getLocalizedMessage());
 			throw new ConnectorIOException(sb.toString(), e);
 		}
 	}
@@ -245,28 +228,24 @@ public class ObjectProcessing {
 		}
 		request.addHeader("PRIVATE-TOKEN", privateToken.toString());
 		request.addHeader("Content-Type", "application/json; charset=utf-8");
+
 		// execute request
-		CloseableHttpResponse response = execute(request);
-		LOGGER.info("response: {0}", response);
-		processResponseErrors(response);
+		try (CloseableHttpResponse response = execute(request)) {
+			LOGGER.info("response: {0}", response);
+			processResponseErrors(response);
 
-		if (!parseResult) {
-			return null;
-		}
+			if (!parseResult) {
+				return null;
+			}
 
-		HttpEntity responseEntity = response.getEntity();
-		try {
+			HttpEntity responseEntity = response.getEntity();
 			byte[] byteResult = EntityUtils.toByteArray(responseEntity);
 			String result = new String(byteResult, "UTF-8");
-			// String result = EntityUtils.toString(responseEntity);
-			responseClose(response);
 			LOGGER.info("result: {0}", result);
 			return new JSONObject(result);
 		} catch (IOException e) {
 			StringBuilder sb = new StringBuilder();
-			sb.append("Failed creating result from HttpEntity: ").append(responseEntity).append(";")
-					.append(e.getLocalizedMessage());
-			responseClose(response);
+			sb.append("Failed processing HTTP response: ").append(e.getLocalizedMessage());
 			throw new ConnectorIOException(sb.toString(), e);
 		}
 	}
@@ -289,27 +268,23 @@ public class ObjectProcessing {
 		request.addHeader("Content-Type", "application/json; charset=utf-8");
 
 		// execute request
-		CloseableHttpResponse response = execute(request);
-		LOGGER.info("response: {0}", response);
-		processResponseErrors(response);
+		try (CloseableHttpResponse response = execute(request)) {
+			LOGGER.info("response: {0}", response);
+			processResponseErrors(response);
 
-		if (!parseResult) {
-			return null;
-		}
-		response.getAllHeaders();
-		HttpEntity responseEntity = response.getEntity();
-		try {
+			if (!parseResult) {
+				return null;
+			}
+
+			response.getAllHeaders();
+			HttpEntity responseEntity = response.getEntity();
 			byte[] byteResult = EntityUtils.toByteArray(responseEntity);
-
 			String result = new String(byteResult, "UTF-8");
-			responseClose(response);
 			LOGGER.info("result: {0}", result);
 			return new JSONArray(result);
 		} catch (IOException e) {
 			StringBuilder sb = new StringBuilder();
-			sb.append("Failed creating result from HttpEntity: ").append(responseEntity).append(";")
-					.append(e.getLocalizedMessage());
-			responseClose(response);
+			sb.append("Failed processing HTTP response: ").append(e.getLocalizedMessage());
 			throw new ConnectorIOException(sb.toString(), e);
 		}
 	}
@@ -476,30 +451,6 @@ public class ObjectProcessing {
 			throw new ConnectorException(sb.toString(), e);
 		}
 	}
-	
-	protected int getTotalPagesByPath(String path) {
-		LOGGER.info("getTotalPagesByPath path {0}", path);
-		URIBuilder uribuilder = getURIBuilder();
-		uribuilder.clearParameters();
-		int totalPagesByPath;
-		uribuilder.setPath(path);
-		uribuilder.setParameter(PER_PAGE, "100");
-
-		try {
-			URI uri = uribuilder.build();
-			// Get X-Total-Pages
-			HttpRequestBase totalPagesrequest = new HttpGet(uri);
-			totalPagesByPath = getTotalPages(totalPagesrequest);
-
-			return totalPagesByPath;
-
-		} catch (URISyntaxException e) {
-			StringBuilder sb = new StringBuilder();
-			sb.append("It was not possible create URI from UriBuider:").append(uriBuilder).append(";")
-					.append(e.getLocalizedMessage());
-			throw new ConnectorException(sb.toString(), e);
-		}
-	}
 
 	protected Object executeGetRequest(String path, Map<String, String> parameters, OperationOptions options,
 			Boolean resultIsArray) {
@@ -613,10 +564,7 @@ public class ObjectProcessing {
 		if (object.has(attrURLName) && object.get(attrURLName) != null
 				&& !JSONObject.NULL.equals(object.get(attrURLName))) {
 
-			HttpEntity responseEntity = null;
-			CloseableHttpResponse response = null;
 			try {
-
 				String attrURLValue = "";
 				if (String.valueOf(object.get(attrURLName)).startsWith(UPLOAD_URL)) {
 					attrURLValue = this.configuration.getProtocol() + PROTOCOL_APPENDER
@@ -646,29 +594,22 @@ public class ObjectProcessing {
 				request.addHeader("PRIVATE-TOKEN", privateToken.toString());
 
 				// execute request
-				response = execute(request);
-				LOGGER.info("responsePhoto: {0}", response);
+				try (CloseableHttpResponse response = execute(request)) {
+					LOGGER.info("responsePhoto: {0}", response);
+					processResponseErrors(response);
+
+					HttpEntity responseEntity = response.getEntity();
+					byte[] byteJPEG = EntityUtils.toByteArray(responseEntity);
+					return byteJPEG;
+				}
 
 			} catch (URISyntaxException e) {
 				StringBuilder sb = new StringBuilder();
-				sb.append("It was not possible create URI from UriBuider; ").append(e.getLocalizedMessage());
+				sb.append("It was not possible create URI from UriBuilder; ").append(e.getLocalizedMessage());
 				throw new ConnectorException(sb.toString(), e);
-			}
-
-			processResponseErrors(response);
-			responseEntity = response.getEntity();
-
-			try {
-
-				byte[] byteJPEG = EntityUtils.toByteArray(responseEntity);
-				responseClose(response);
-				return byteJPEG;
-
 			} catch (IOException e) {
 				StringBuilder sb = new StringBuilder();
-				sb.append("It was not possible create byte[] from response entity: ").append(responseEntity)
-						.append("; ").append(e.getLocalizedMessage());
-				responseClose(response);
+				sb.append("It was not possible create byte[] from response entity: ").append(e.getLocalizedMessage());
 				throw new ConnectorException(sb.toString(), e);
 			}
 		}
@@ -683,18 +624,6 @@ public class ObjectProcessing {
 				addAttr(builder, attrName, String.valueOf(object.get(attrName)));
 			} else {
 				addAttr(builder, attrName, object.get(attrName));
-			}
-		}
-	}
-
-	protected void getIfExists(JSONObject object, String attrName, Class<?> type, ConnectorObjectBuilder builder,
-			String MPName) {
-		if (object.has(attrName) && object.get(attrName) != null && !JSONObject.NULL.equals(object.get(attrName))
-				&& !String.valueOf(object.get(attrName)).isEmpty()) {
-			if (type.equals(String.class)) {
-				addAttr(builder, MPName, String.valueOf(object.get(attrName)));
-			} else {
-				addAttr(builder, MPName, object.get(attrName));
 			}
 		}
 	}
@@ -837,45 +766,26 @@ public class ObjectProcessing {
 		LOGGER.error("{0}", message);
 		if (statusCode == 400 || statusCode == 405 || statusCode == 406) {
 			if (message.contains("password")) {
-				responseClose(response);
 				throw new InvalidPasswordException(message);
 			} else if (message.contains("\\\"has already been taken\\\"")) {
 				// Group and Project return 400 error if they already exist
-				responseClose(response);
 				throw new AlreadyExistsException(message);
 			} else {
-				responseClose(response);
 				throw new ConnectorIOException(message);
 			}
 		} else if (statusCode == 401 || statusCode == 402 || statusCode == 403 || statusCode == 407) {
-			responseClose(response);
 			throw new PermissionDeniedException(message);
 		} else if (statusCode == 404 || statusCode == 410) {
-			responseClose(response);
 			throw new UnknownUidException(message);
 		} else if (statusCode == 408) {
-			responseClose(response);
 			throw new OperationTimeoutException(message);
 		} else if (statusCode == 412) {
-			responseClose(response);
 			throw new PreconditionFailedException(message);
 		} else if (statusCode == 409) {
-			responseClose(response);
 			throw new AlreadyExistsException(message);
 		}
 		// other codes
-		responseClose(response);
 		throw new ConnectorException(message);
-	}
-
-	private void responseClose(CloseableHttpResponse response) {
-		try {
-			response.close();
-		} catch (IOException e) {
-			StringBuilder sb = new StringBuilder();
-			sb.append("Failed close response: ").append(response);
-			LOGGER.warn(e, sb.toString());
-		}
 	}
 
 	private int getTotalPages(HttpRequestBase request) {
@@ -896,16 +806,20 @@ public class ObjectProcessing {
 		request.addHeader("Content-Type", "application/json; charset=utf-8");
 
 		// execute request
-		CloseableHttpResponse response = execute(request);
-		Header responseHeaderTotalPage = response.getFirstHeader("X-Total-Pages");
-		if (responseHeaderTotalPage != null) {
-			totalPages = Integer.parseInt(responseHeaderTotalPage.getValue());
-		} else {
-			totalPages = 1;
+		try (CloseableHttpResponse response = execute(request)) {
+			Header responseHeaderTotalPage = response.getFirstHeader("X-Total-Pages");
+			if (responseHeaderTotalPage != null) {
+				totalPages = Integer.parseInt(responseHeaderTotalPage.getValue());
+			} else {
+				totalPages = 1;
+			}
+			LOGGER.info("X-Total-Pages: {0}", totalPages);
+			return totalPages;
+		} catch (IOException e) {
+			StringBuilder sb = new StringBuilder();
+			sb.append("Failed to get total pages: ").append(e.getLocalizedMessage());
+			throw new ConnectorIOException(sb.toString(), e);
 		}
-		LOGGER.info("X-Total-Pages: {0}", totalPages);
-		responseClose(response);
-		return totalPages;
 	}
 
 	private JSONArray mergeJSONArrays(JSONArray rootArr, JSONArray addArr) {

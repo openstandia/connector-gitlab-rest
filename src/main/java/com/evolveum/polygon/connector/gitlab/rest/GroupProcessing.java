@@ -15,41 +15,25 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-/**
- * @author Lukas Skublik
- *
- */
-
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.identityconnectors.framework.common.exceptions.ConnectorIOException;
 import org.identityconnectors.framework.common.exceptions.InvalidAttributeValueException;
-import org.identityconnectors.framework.common.objects.Attribute;
-import org.identityconnectors.framework.common.objects.AttributeDelta;
-import org.identityconnectors.framework.common.objects.AttributeInfoBuilder;
-import org.identityconnectors.framework.common.objects.ConnectorObject;
-import org.identityconnectors.framework.common.objects.ConnectorObjectBuilder;
-import org.identityconnectors.framework.common.objects.Name;
-import org.identityconnectors.framework.common.objects.ObjectClass;
-import org.identityconnectors.framework.common.objects.ObjectClassInfoBuilder;
-import org.identityconnectors.framework.common.objects.OperationOptions;
-import org.identityconnectors.framework.common.objects.ResultsHandler;
-import org.identityconnectors.framework.common.objects.SchemaBuilder;
-import org.identityconnectors.framework.common.objects.Uid;
-import org.identityconnectors.framework.common.objects.filter.ContainsAllValuesFilter;
+import org.identityconnectors.framework.common.objects.*;
 import org.identityconnectors.framework.common.objects.filter.ContainsFilter;
 import org.identityconnectors.framework.common.objects.filter.EqualsFilter;
 import org.identityconnectors.framework.common.objects.filter.Filter;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * @author Lukas Skublik
+ *
+ */
 public class GroupProcessing extends GroupOrProjectProcessing {
 
 	private static final String ATTR_PROJECTS = "projects";
@@ -150,37 +134,6 @@ public class GroupProcessing extends GroupOrProjectProcessing {
 		attrSharedProjectsBuilder.setType(String.class).setMultiValued(true).setCreateable(false).setUpdateable(false)
 				.setReadable(true);
 		groupObjClassBuilder.addAttributeInfo(attrSharedProjectsBuilder.build());
-
-		AttributeInfoBuilder attrMembersBuilder = new AttributeInfoBuilder(ATTR_MEMBERS_WITH_NAME);
-		attrMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(false).setUpdateable(false)
-				.setReadable(true);
-		groupObjClassBuilder.addAttributeInfo(attrMembersBuilder.build());
-
-		// multivalued: TRUE && createable: TRUE && updateable: TRUE && readable: TRUE
-		AttributeInfoBuilder attrGuestMembersBuilder = new AttributeInfoBuilder(ATTR_GUEST_MEMBERS);
-		attrGuestMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		groupObjClassBuilder.addAttributeInfo(attrGuestMembersBuilder.build());
-
-		AttributeInfoBuilder attrReporterMembersBuilder = new AttributeInfoBuilder(ATTR_REPORTER_MEMBERS);
-		attrReporterMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		groupObjClassBuilder.addAttributeInfo(attrReporterMembersBuilder.build());
-
-		AttributeInfoBuilder attrDeveloperMembersBuilder = new AttributeInfoBuilder(ATTR_DEVELOPER_MEMBERS);
-		attrDeveloperMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		groupObjClassBuilder.addAttributeInfo(attrDeveloperMembersBuilder.build());
-
-		AttributeInfoBuilder attrMasterMembersBuilder = new AttributeInfoBuilder(ATTR_MASTER_MEMBERS);
-		attrMasterMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		groupObjClassBuilder.addAttributeInfo(attrMasterMembersBuilder.build());
-
-		AttributeInfoBuilder attrOwnerMembersBuilder = new AttributeInfoBuilder(ATTR_OWNER_MEMBERS);
-		attrOwnerMembersBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true)
-				.setReadable(true);
-		groupObjClassBuilder.addAttributeInfo(attrOwnerMembersBuilder.build());
 
 		schemaBuilder.defineObjectClass(groupObjClassBuilder.build());
 	}
@@ -310,77 +263,6 @@ public class GroupProcessing extends GroupOrProjectProcessing {
 				LOGGER.error(sb.toString());
 				throw new InvalidAttributeValueException(sb.toString());
 			}
-		} else if (query instanceof ContainsAllValuesFilter) {
-			// Implemented the use of the "/memberships" route to optimize the query of the
-			// accesses of each user
-			if (((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_GUEST_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_REPORTER_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_DEVELOPER_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_MASTER_MEMBERS)
-					|| ((ContainsAllValuesFilter) query).getAttribute().getName().equals(ATTR_OWNER_MEMBERS)) {
-
-				List<Object> allValues = ((ContainsAllValuesFilter) query).getAttribute().getValue();
-
-				for (Object value : allValues) {
-					if (value == null) {
-						invalidAttributeValue(((ContainsAllValuesFilter) query).getAttribute().getName(), query);
-					}
-				}
-
-				String uid = String.valueOf(allValues.get(0));
-
-				JSONArray groupsWithMPMembers = new JSONArray();
-
-				UserProcessing userProcessing = new UserProcessing(configuration, httpclient);
-				Map<Integer, Integer> groupByAccess = userProcessing.getUserAccess(USERS + "/" + uid + "/" + USERS_MEMBERSHIPS_URL, UserProcessing.TYPE_MEMBERSHIPS_GROUP);
-
-
-				for (int groupID : groupByAccess.keySet()) {
-					URIBuilder uribuilderMember = createRequestForMembers(GROUPS + "/" + groupID);
-					Map<Integer, List<String>> mapMembersGroup = getMembers(uribuilderMember);
-
-
-					final List<String> membersGroup;
-					switch (((ContainsAllValuesFilter) query).getAttribute().getName()) {
-						case ATTR_GUEST_MEMBERS:
-							membersGroup = mapMembersGroup.get(10);
-							break;
-						case ATTR_REPORTER_MEMBERS:
-							membersGroup = mapMembersGroup.get(20);
-							break;
-						case ATTR_DEVELOPER_MEMBERS:
-							membersGroup = mapMembersGroup.get(30);
-							break;
-						case ATTR_MASTER_MEMBERS:
-							membersGroup = mapMembersGroup.get(40);
-							break;
-						case ATTR_OWNER_MEMBERS:
-							membersGroup = mapMembersGroup.get(50);
-							break;
-						default:
-							membersGroup = null;
-							break;
-
-					}
-
-					if (membersGroup == null) {
-						continue;
-					}
-
-					if (new HashSet<>(membersGroup).containsAll(allValues)) {
-						final JSONObject group = findGroupByID(Integer.toString(groupID), options);
-						groupsWithMPMembers.put(group);
-					}
-				}
-				LOGGER.info("groupsWithMPMembers -  members: {0}", groupsWithMPMembers);
-				processingObjectFromGET(groupsWithMPMembers, handler);
-			} else {
-				StringBuilder sb = new StringBuilder();
-				sb.append("Illegal search with attribute ").append(((ContainsAllValuesFilter) query).getAttribute().getName())
-						.append(" for query: ").append(query);
-				LOGGER.error(sb.toString());
-				throw new InvalidAttributeValueException(sb.toString());
-			}
 		} else if (query == null) {
 			JSONArray groups = (JSONArray) executeGetRequest(GROUPS, null, options, true);
 			processingObjectFromGET(groups, handler);
@@ -407,24 +289,9 @@ public class GroupProcessing extends GroupOrProjectProcessing {
 		return null;
 	}
 
-	private JSONObject findGroupByID(String groupID, OperationOptions options) {
-		Map<String, String> parameters = new HashMap<>();
-		parameters.put("with_custom_attributes", "no");
-		parameters.put("with_projects", "no");
-		StringBuilder sbPath = new StringBuilder();
-
-		sbPath.append(GROUPS).append("/").append(groupID);
-		JSONObject group = (JSONObject) executeGetRequest(sbPath.toString(), parameters, options, false);
-		if (group.getInt(UID) == Integer.parseInt(groupID)) {
-			return group;
-		}
-		return null;
-	}
-
 	private void processingObjectFromGET(JSONObject group, ResultsHandler handler, String sbPath) {
 		byte[] avatarPhoto = getAvatarPhoto(group, ATTR_AVATAR_URL, ATTR_AVATAR);
 		ConnectorObjectBuilder builder = convertGroupJSONObjectToConnectorObject(group, avatarPhoto);
-		addAttributeForMembers(builder, handler, sbPath);
 		ConnectorObject connectorObject = builder.build();
 		handler.handle(connectorObject);
 	}
@@ -438,7 +305,6 @@ public class GroupProcessing extends GroupOrProjectProcessing {
 	}
 
 	public void updateDeltaMultiValues(Uid uid, Set<AttributeDelta> attributes, OperationOptions options) {
-		updateDeltaMultiValuesForGroupOrProject(uid, attributes, options, GROUPS);
+		// No updatable multiple values currently
 	}
-
 }

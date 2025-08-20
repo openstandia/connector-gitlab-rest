@@ -15,21 +15,6 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-/**
- * @author Lukas Skublik
- *
- */
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
@@ -38,29 +23,30 @@ import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.identityconnectors.common.security.GuardedString;
+import org.identityconnectors.framework.common.exceptions.AlreadyExistsException;
 import org.identityconnectors.framework.common.exceptions.ConnectorException;
 import org.identityconnectors.framework.common.exceptions.ConnectorIOException;
 import org.identityconnectors.framework.common.exceptions.InvalidAttributeValueException;
-import org.identityconnectors.framework.common.objects.Attribute;
-import org.identityconnectors.framework.common.objects.AttributeDelta;
-import org.identityconnectors.framework.common.objects.AttributeInfoBuilder;
-import org.identityconnectors.framework.common.objects.ConnectorObject;
-import org.identityconnectors.framework.common.objects.ConnectorObjectBuilder;
-import org.identityconnectors.framework.common.objects.Name;
-import org.identityconnectors.framework.common.objects.ObjectClass;
-import org.identityconnectors.framework.common.objects.ObjectClassInfoBuilder;
-import org.identityconnectors.framework.common.objects.OperationOptions;
-import org.identityconnectors.framework.common.objects.OperationalAttributeInfos;
-import org.identityconnectors.framework.common.objects.OperationalAttributes;
-import org.identityconnectors.framework.common.objects.ResultsHandler;
-import org.identityconnectors.framework.common.objects.SchemaBuilder;
-import org.identityconnectors.framework.common.objects.Uid;
+import org.identityconnectors.framework.common.objects.*;
 import org.identityconnectors.framework.common.objects.filter.ContainsFilter;
 import org.identityconnectors.framework.common.objects.filter.EqualsFilter;
 import org.identityconnectors.framework.common.objects.filter.Filter;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+/**
+ * @author Lukas Skublik
+ *
+ */
 public class UserProcessing extends ObjectProcessing {
 
 	private static final String STATUS_ACTIVE = "active";
@@ -107,11 +93,16 @@ public class UserProcessing extends ObjectProcessing {
 	private static final String ATTR_CAN_CREATE_PROJ = "can_create_project";
 	private static final String ATTR_TWO_FACTOR_ENABLED = "two_factor_enabled";
 	private static final String ATTR_SSH_KEYS = "SSH_keys";
-	protected static final String ATTR_GROUP_OWNER = "group-owner";
-	protected static final String ATTR_GROUP_MASTER = "group-master";
-	protected static final String ATTR_GROUP_DEVELOPER = "group-developer";
-	protected static final String ATTR_GROUP_REPORTER = "group-reporter";
-	protected static final String ATTR_GROUP_GUEST = "group-guest";
+	protected static final String ATTR_GROUPS_AS_OWNER = "groups_as_owner";
+	protected static final String ATTR_GROUPS_AS_MASTER = "groups_as_master";
+	protected static final String ATTR_GROUPS_AS_DEVELOPER = "groups_as_developer";
+	protected static final String ATTR_GROUPS_AS_REPORTER = "groups_as_reporter";
+	protected static final String ATTR_GROUPS_AS_GUEST = "groups_as_guest";
+	protected static final String ATTR_PROJECTS_AS_OWNER = "projects_as_owner";
+	protected static final String ATTR_PROJECTS_AS_MASTER = "projects_as_master";
+	protected static final String ATTR_PROJECTS_AS_DEVELOPER = "projects_as_developer";
+	protected static final String ATTR_PROJECTS_AS_REPORTER = "projects_as_reporter";
+	protected static final String ATTR_PROJECTS_AS_GUEST = "projects_as_guest";
 	// User memberships - Introduced in Gitlab 12.8
 	protected static final String USERS_MEMBERSHIPS_URL = "/memberships";
 	protected static final String TYPE_MEMBERSHIPS = "type";
@@ -121,6 +112,28 @@ public class UserProcessing extends ObjectProcessing {
 	protected static final String ATTR_USER_MEMBERSHIPS_ACCESS_LEVEL = "access_level";
 	protected static final String ATTR_USER_MEMBERSHIPS_SRC_TYPE = "source_type";
 	protected static final String ATTR_USER_MEMBERSHIPS_SRC_NAME = "source_name";
+	// Constants for member management APIs
+	private static final String ATTR_USER_ID = "user_id";
+	private static final String ATTR_ACCESS_LEVEL = "access_level";
+
+	protected static final Map<String, Integer> GROUP_ACCESS_LEVEL_MAP = Map.of(
+			ATTR_GROUPS_AS_OWNER, 50,
+			ATTR_GROUPS_AS_MASTER, 40,
+			ATTR_GROUPS_AS_DEVELOPER, 30,
+			ATTR_GROUPS_AS_REPORTER, 20,
+			ATTR_GROUPS_AS_GUEST, 10
+	);
+	protected static final Map<String, Integer> PROJECT_ACCESS_LEVEL_MAP = Map.of(
+			ATTR_PROJECTS_AS_OWNER, 50,
+			ATTR_PROJECTS_AS_MASTER, 40,
+			ATTR_PROJECTS_AS_DEVELOPER, 30,
+			ATTR_PROJECTS_AS_REPORTER, 20,
+			ATTR_PROJECTS_AS_GUEST, 10
+	);
+	protected static final Map<Integer, String> GROUP_ACCESS_LEVEL_MAP_REVERSED = GROUP_ACCESS_LEVEL_MAP.entrySet().stream()
+			.collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+	protected static final Map<Integer, String> PROJECT_ACCESS_LEVEL_MAP_REVERSED = PROJECT_ACCESS_LEVEL_MAP.entrySet().stream()
+			.collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
 	protected CloseableHttpClient httpclient;
 	private GitlabRestConfiguration configuration;
@@ -262,30 +275,57 @@ public class UserProcessing extends ObjectProcessing {
 				.setReadable(true);
 		userObjClassBuilder.addAttributeInfo(sshKeysBuilder.build());
 
-		// multivalued: TRUE && createable: TRUE && updateable: TRUE && readable: TRUE
-		AttributeInfoBuilder attrGroupOwnerBuilder = new AttributeInfoBuilder(ATTR_GROUP_OWNER);
-		attrGroupOwnerBuilder.setType(String.class).setMultiValued(true).setReadable(true);
-		userObjClassBuilder.addAttributeInfo(attrGroupOwnerBuilder.build());
+		// Group membership
+		AttributeInfoBuilder attrGroupsAsOwnerBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_OWNER);
+		attrGroupsAsOwnerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsOwnerBuilder.build());
 
-		// multivalued: TRUE && createable: TRUE && updateable: TRUE && readable: TRUE
-		AttributeInfoBuilder attrGroupMasterBuilder = new AttributeInfoBuilder(ATTR_GROUP_MASTER);
-		attrGroupMasterBuilder.setType(String.class).setMultiValued(true).setReadable(true);
-		userObjClassBuilder.addAttributeInfo(attrGroupMasterBuilder.build());
+		AttributeInfoBuilder attrGroupsAsMasterBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_MASTER);
+		attrGroupsAsMasterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsMasterBuilder.build());
 
-		// multivalued: TRUE && createable: TRUE && updateable: TRUE && readable: TRUE
-		AttributeInfoBuilder attrGroupDeveloperBuilder = new AttributeInfoBuilder(ATTR_GROUP_DEVELOPER);
-		attrGroupDeveloperBuilder.setType(String.class).setMultiValued(true).setReadable(true);
-		userObjClassBuilder.addAttributeInfo(attrGroupDeveloperBuilder.build());
+		AttributeInfoBuilder attrGroupsAsDeveloperBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_DEVELOPER);
+		attrGroupsAsDeveloperBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsDeveloperBuilder.build());
 
-		// multivalued: TRUE && createable: TRUE && updateable: TRUE && readable: TRUE
-		AttributeInfoBuilder attrGroupReporterBuilder = new AttributeInfoBuilder(ATTR_GROUP_REPORTER);
-		attrGroupReporterBuilder.setType(String.class).setMultiValued(true).setReadable(true);
-		userObjClassBuilder.addAttributeInfo(attrGroupReporterBuilder.build());
+		AttributeInfoBuilder attrGroupsAsReporterBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_REPORTER);
+		attrGroupsAsReporterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsReporterBuilder.build());
 
-		// multivalued: TRUE && createable: TRUE && updateable: TRUE && readable: TRUE
-		AttributeInfoBuilder attrGroupGuestBuilder = new AttributeInfoBuilder(ATTR_GROUP_GUEST);
-		attrGroupGuestBuilder.setType(String.class).setMultiValued(true).setReadable(true);
-		userObjClassBuilder.addAttributeInfo(attrGroupGuestBuilder.build());
+		AttributeInfoBuilder attrGroupsAsGuestBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_GUEST);
+		attrGroupsAsGuestBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsGuestBuilder.build());
+
+		// Project membership
+		AttributeInfoBuilder attrProjectsAsOwnerBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_OWNER);
+		attrProjectsAsOwnerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsOwnerBuilder.build());
+
+		AttributeInfoBuilder attrProjectsAsMasterBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_MASTER);
+		attrProjectsAsMasterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsMasterBuilder.build());
+
+		AttributeInfoBuilder attrProjectsAsDeveloperBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_DEVELOPER);
+		attrProjectsAsDeveloperBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsDeveloperBuilder.build());
+
+		AttributeInfoBuilder attrProjectsAsReporterBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_REPORTER);
+		attrProjectsAsReporterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsReporterBuilder.build());
+
+		AttributeInfoBuilder attrProjectsAsGuestBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_GUEST);
+		attrProjectsAsGuestBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsGuestBuilder.build());
 
 		// password related attributes
 		userObjClassBuilder.addAttributeInfo(OperationalAttributeInfos.PASSWORD);
@@ -361,16 +401,13 @@ public class UserProcessing extends ObjectProcessing {
 		changeStateIfExists(attributes, newUid);
 
 		if (create) {
-
 			for (Attribute attr : attributes) {
 				if (ATTR_SSH_KEYS.equals(attr.getName())) {
-
 					List<Object> vals = attr.getValue();
 					if (vals != null && !vals.isEmpty()) {
 						Map<String, Integer> sshKeys = getSSHKeysAsMap(
 								Integer.parseInt((String) (newUid.getValue().get(0))));
 						for (Object value : vals) {
-
 							addSSHKey(newUid, sshKeys, value);
 						}
 					}
@@ -379,8 +416,31 @@ public class UserProcessing extends ObjectProcessing {
 					List<Object> vals = attr.getValue();
 					if (vals != null && !vals.isEmpty()) {
 						for (Object value : vals) {
-
 							addIdentities(newUid, value);
+						}
+					}
+				}
+				// Handle group memberships
+				Integer groupAccessLevel = GROUP_ACCESS_LEVEL_MAP.get(attr.getName());
+				if (groupAccessLevel != null) {
+					List<Object> vals = attr.getValue();
+					if (vals != null && !vals.isEmpty()) {
+						for (Object value : vals) {
+							if (value != null) {
+								addMemberToGroupOrProject(newUid.getUidValue(), (String) value, groupAccessLevel, true);
+							}
+						}
+					}
+				}
+				// Handle project memberships
+				Integer projectAccessLevel = PROJECT_ACCESS_LEVEL_MAP.get(attr.getName());
+				if (projectAccessLevel != null) {
+					List<Object> vals = attr.getValue();
+					if (vals != null && !vals.isEmpty()) {
+						for (Object value : vals) {
+							if (value != null) {
+								addMemberToGroupOrProject(newUid.getUidValue(), (String) value, projectAccessLevel, false);
+							}
 						}
 					}
 				}
@@ -493,12 +553,10 @@ public class UserProcessing extends ObjectProcessing {
 	}
 
 	private void addSSHKey(Uid uid, Map<String, Integer> sshKeys, Object value) {
-
 		modifySSHKey(uid, sshKeys, value, true);
 	}
 
 	private void removeSSHKey(Uid uid, Map<String, Integer> sshKeys, Object value) {
-
 		modifySSHKey(uid, sshKeys, value, false);
 	}
 
@@ -551,10 +609,7 @@ public class UserProcessing extends ObjectProcessing {
 		return builder;
 	}
 
-
-
 	private Map<String, Integer> getSSHKeysAsMap(int userUid) {
-
 		URIBuilder uriBuilder = getURIBuilder();
 		StringBuilder path = new StringBuilder();
 		path.append(USERS).append("/").append(userUid).append(KEYS);
@@ -596,6 +651,9 @@ public class UserProcessing extends ObjectProcessing {
 	}
 
 	public void executeQueryForUser(Filter query, ResultsHandler handler, OperationOptions options) {
+		Set<String> attributesToGetSet = toAttributesToGetSet(options);
+		boolean allowPartialAttributeValues = hasAllowPartialAttributeValuesOption(options);
+
 		if (query instanceof EqualsFilter) {
 
 			if (((EqualsFilter) query).getAttribute() instanceof Uid) {
@@ -607,7 +665,7 @@ public class UserProcessing extends ObjectProcessing {
 				StringBuilder sbPath = new StringBuilder();
 				sbPath.append(USERS).append("/").append(uid.getUidValue());
 				JSONObject user = (JSONObject) executeGetRequest(sbPath.toString(), null, options, false);
-				processingObjectFromGET(user, handler);
+				processingObjectFromGET(user, handler, attributesToGetSet, allowPartialAttributeValues);
 
 			} else if (((EqualsFilter) query).getAttribute() instanceof Name) {
 
@@ -618,7 +676,7 @@ public class UserProcessing extends ObjectProcessing {
 				Map<String, String> parameters = new HashMap<String, String>();
 				parameters.put(ATTR_USERNAME, allValues.get(0).toString());
 				JSONArray users = (JSONArray) executeGetRequest(USERS, parameters, options, true);
-				processingObjectFromGET(users, handler);
+				processingObjectFromGET(users, handler, attributesToGetSet, allowPartialAttributeValues);
 
 			} else if (((EqualsFilter) query).getAttribute().getName().equals(ATTR_IDENTITIES)) {
 
@@ -630,7 +688,7 @@ public class UserProcessing extends ObjectProcessing {
 				parameters.put(ATTR_PROVIDER, ((String) allValues.get(0)).split(":")[0].toString());
 				parameters.put(ATTR_EXTERN_UID, ((String) allValues.get(0)).split(":")[1].toString());
 				JSONArray users = (JSONArray) executeGetRequest(USERS, parameters, options, true);
-				processingObjectFromGET(users, handler);
+				processingObjectFromGET(users, handler, attributesToGetSet, allowPartialAttributeValues);
 
 			} else if (((EqualsFilter) query).getAttribute().getName().equals(ATTR_EXTERNAL)) {
 
@@ -641,7 +699,7 @@ public class UserProcessing extends ObjectProcessing {
 				Map<String, String> parameters = new HashMap<String, String>();
 				parameters.put(ATTR_EXTERNAL, allValues.get(0).toString());
 				JSONArray users = (JSONArray) executeGetRequest(USERS, parameters, options, true);
-				processingObjectFromGET(users, handler);
+				processingObjectFromGET(users, handler, attributesToGetSet, allowPartialAttributeValues);
 			} else {
 				StringBuilder sb = new StringBuilder();
 				sb.append("Illegal search with attribute ").append(((EqualsFilter) query).getAttribute().getName())
@@ -663,7 +721,7 @@ public class UserProcessing extends ObjectProcessing {
 				Map<String, String> parameters = new HashMap<String, String>();
 				parameters.put(SEARCH, allValues.get(0).toString());
 				JSONArray users = (JSONArray) executeGetRequest(USERS, parameters, options, true);
-				processingObjectFromGET(users, handler);
+				processingObjectFromGET(users, handler, attributesToGetSet, allowPartialAttributeValues);
 
 			} else {
 				StringBuilder sb = new StringBuilder();
@@ -674,7 +732,7 @@ public class UserProcessing extends ObjectProcessing {
 			}
 		} else if (query == null) {
 			JSONArray users = (JSONArray) executeGetRequest(USERS, null, options, true);
-			processingObjectFromGET(users, handler);
+			processingObjectFromGET(users, handler, attributesToGetSet, allowPartialAttributeValues);
 		} else {
 			StringBuilder sb = new StringBuilder();
 			sb.append("Unexpected filter ").append(query.getClass());
@@ -683,27 +741,101 @@ public class UserProcessing extends ObjectProcessing {
 		}
 	}
 
-	private void processingObjectFromGET(JSONObject user, ResultsHandler handler) {
+	private void processingObjectFromGET(JSONObject user, ResultsHandler handler, Set<String> attributesToGetSet, boolean allowPartialAttributeValues) {
 		byte[] avaratPhoto = getAvatarPhoto(user, ATTR_AVATAR_URL, ATTR_AVATAR);
 		int userUidValue = getUIDIfExists(user, UID);
 		Set<String> SSHKeys = getSSHKeysAsMap(userUidValue).keySet();
 		List<String> identities = getAttributeForIdentities(user);
 		ConnectorObjectBuilder builder = convertUserJSONObjectToConnectorObject(user, SSHKeys, avaratPhoto, identities);
+
+		boolean groupsRequested = isGroupsRequested(attributesToGetSet);
+		boolean projectsRequested = isProjectsRequested(attributesToGetSet);
+
+		if (groupsRequested || projectsRequested) {
+			if (allowPartialAttributeValues) {
+				// Skip fetching groups
+				for (String name : GROUP_ACCESS_LEVEL_MAP.keySet()) {
+					if (attributesToGetSet.contains(name)) {
+						AttributeBuilder attrBuilder = new AttributeBuilder();
+						attrBuilder.setName(name).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
+						attrBuilder.addValue(Collections.EMPTY_LIST);
+
+						builder.addAttribute(attrBuilder.build());
+					}
+				}
+			} else {
+				// Fetch groups
+				final String type;
+				if (groupsRequested && projectsRequested) {
+					type = null;
+				} else if (groupsRequested) {
+					type = TYPE_MEMBERSHIPS_GROUP;
+				} else {
+					type = TYPE_MEMBERSHIPS_PROJECT;
+				}
+				Map<String, List<String>> groups = getUserAccessAsStream(USERS + "/" + userUidValue + "/" + USERS_MEMBERSHIPS_URL, type)
+						.filter(jsonObject -> GROUP_ACCESS_LEVEL_MAP_REVERSED.containsKey(jsonObject.getInt(ATTR_USER_MEMBERSHIPS_ACCESS_LEVEL))) // Filter by supported accessLevel
+						.collect(Collectors.groupingBy(
+								// Create map key as attribute name for the group or project
+								jsonObject -> {
+									Integer accessLevel = jsonObject.getInt(ATTR_USER_MEMBERSHIPS_ACCESS_LEVEL);
+									String srcType = jsonObject.getString(ATTR_USER_MEMBERSHIPS_SRC_TYPE);
+									if (srcType.equals(TYPE_MEMBERSHIPS_GROUP)) {
+										return GROUP_ACCESS_LEVEL_MAP_REVERSED.get(accessLevel);
+									} else if (srcType.equals(TYPE_MEMBERSHIPS_PROJECT)) {
+										return PROJECT_ACCESS_LEVEL_MAP_REVERSED.get(accessLevel);
+									}
+									return "";
+								},
+								Collectors.mapping(
+										jsonObject -> String.valueOf(jsonObject.getInt(ATTR_USER_MEMBERSHIPS_SRC_ID)),
+										Collectors.toList()
+								)
+						));
+				for (Map.Entry<String, List<String>> entrySet : groups.entrySet()) {
+					if (entrySet.getKey().isEmpty()) {
+						continue;
+					}
+					AttributeBuilder attrBuilder = new AttributeBuilder();
+					attrBuilder.setName(entrySet.getKey());
+					attrBuilder.addValue(entrySet.getValue());
+
+					builder.addAttribute(attrBuilder.build());
+				}
+			}
+		}
+
 		ConnectorObject connectorObject = builder.build();
 		LOGGER.info("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(UID),
 				connectorObject.toString());
 		handler.handle(connectorObject);
 	}
 
-	private void processingObjectFromGET(JSONArray users, ResultsHandler handler) {
+	private Set<String> toAttributesToGetSet(OperationOptions options) {
+		String[] attributesToGet = options.getAttributesToGet();
+		if (attributesToGet == null) {
+			return Collections.emptySet();
+		}
+		return new HashSet<>(Arrays.asList(attributesToGet));
+	}
+
+	private boolean hasAllowPartialAttributeValuesOption(OperationOptions options) {
+		return Boolean.TRUE.equals(options.getAllowPartialAttributeValues());
+	}
+
+	private boolean isGroupsRequested(Set<String> attributesToGetSet) {
+		return !Collections.disjoint(GROUP_ACCESS_LEVEL_MAP.keySet(), attributesToGetSet);
+	}
+
+	private boolean isProjectsRequested(Set<String> attributesToGetSet) {
+		return !Collections.disjoint(PROJECT_ACCESS_LEVEL_MAP.keySet(), attributesToGetSet);
+	}
+
+	private void processingObjectFromGET(JSONArray users, ResultsHandler handler, Set<String> attributesToGetSet, boolean allowPartialAttributeValuess) {
 		JSONObject user;
 		for (int i = 0; i < users.length(); i++) {
 			user = users.getJSONObject(i);
-			processingObjectFromGET(user, handler);
-//			ConnectorObjectBuilder builder = convertUserJSONObjectToConnectorObject(user);
-//			ConnectorObject connectorObject = builder.build();
-//			LOGGER.info("convertUserToConnectorObject, user: {0}, \n\tconnectorObject: {1}", user.get(UID),connectorObject.toString());
-//			handler.handle(connectorObject);
+			processingObjectFromGET(user, handler, attributesToGetSet, allowPartialAttributeValuess);
 		}
 	}
 
@@ -748,6 +880,12 @@ public class UserProcessing extends ObjectProcessing {
 				}
 			}
 		}
+
+		// Process group membership changes collectively
+		processGroupMembershipChanges(uid, attributesDelta);
+
+		// Process project membership changes collectively
+		processProjectMembershipChanges(uid, attributesDelta);
 	}
 
 	private List<String> getAttributeForIdentities(JSONObject object) {
@@ -780,39 +918,32 @@ public class UserProcessing extends ObjectProcessing {
 		return null;
 	}
 
-	public Map<Integer, Integer> getUserAccess(String sbPath, String type) {
+	public Stream<JSONObject> getUserAccessAsStream(String sbPath, String type) {
 		LOGGER.info("getUserAccess Start");
 		// Get groups or project to manage is informed by user on connector configuration
 		Map<String, String> groupsToManage = getGroupsForFilter(this.configuration.getGroupsToManage());
-		Map<Integer, Integer> output = new HashMap<Integer, Integer>();
-		JSONArray groupsOrProjects = new JSONArray();
-		JSONArray partOfGroupsOrProjects = new JSONArray();
 		Map<String, String> parameters = new HashMap<String, String>();
 
 		parameters.put(PER_PAGE, "100");
-		parameters.put(TYPE_MEMBERSHIPS, type);
+		if (type != null) {
+			parameters.put(TYPE_MEMBERSHIPS, type);
+		}
 
 		// Get all groups or projects for user
-		partOfGroupsOrProjects = (JSONArray) executeGetRequest(sbPath, parameters, null, true);
-		Iterator<Object> iterator = partOfGroupsOrProjects.iterator();
-		while (iterator.hasNext()) {
-			Object groupOrProject = iterator.next();
-			if (groupsToManage == null) {
-				groupsOrProjects.put(groupOrProject);
-			} else if (groupsToManage
-					.containsKey(new JSONObject(groupOrProject.toString()).getString(ATTR_USER_MEMBERSHIPS_SRC_NAME).toLowerCase())) {
-				groupsOrProjects.put(groupOrProject);
-			}
-		}
-		for (int i = 0; i < groupsOrProjects.length(); i++) {
-			JSONObject jsonGroupOrProject = groupsOrProjects.getJSONObject(i);
-			int sourceID = (int) (jsonGroupOrProject.get(ATTR_USER_MEMBERSHIPS_SRC_ID));
-			int accessLevel = (int) jsonGroupOrProject.get(ATTR_USER_MEMBERSHIPS_ACCESS_LEVEL);
+		JSONArray partOfGroupsOrProjects = (JSONArray) executeGetRequest(sbPath, parameters, null, true);
 
-			output.put(sourceID, accessLevel);
-		}
+		Stream<JSONObject> jsonObjectStream = IntStream.range(0, partOfGroupsOrProjects.length())
+				.mapToObj(partOfGroupsOrProjects::getJSONObject)
+				.filter(jsonObject -> {
+					if (groupsToManage == null) {
+						return true;
+					}
+					return groupsToManage.containsKey(jsonObject.getString(ATTR_USER_MEMBERSHIPS_SRC_NAME).toLowerCase());
+				});
+
 		LOGGER.info("getUserAccess End");
-		return output;
+
+		return jsonObjectStream;
 	}
 
 	private Map<String, String> getGroupsForFilter(String groupsToManage) {
@@ -827,6 +958,134 @@ public class UserProcessing extends ObjectProcessing {
 		}
 		LOGGER.info("getGroupsForFilter End");
 		return groupArr;
+	}
+
+	private void updateMemberAccessLevel(String userId, String groupOrProjectId, int accessLevel, boolean isGroup) {
+		LOGGER.info("Updating member access level - User: {0}, ID: {1}, AccessLevel: {2}, IsGroup: {3}",
+				userId, groupOrProjectId, accessLevel, isGroup);
+
+		String path = isGroup ? GROUPS : PROJECTS;
+		StringBuilder sbPath = new StringBuilder();
+		sbPath.append(path).append("/").append(groupOrProjectId).append(MEMBERS);
+
+		JSONObject json = new JSONObject();
+		json.put(ATTR_ACCESS_LEVEL, accessLevel);
+
+		// Use PUT request to update existing member
+		createPutOrPostRequest(new Uid(userId), sbPath.toString(), json, false);
+	}
+
+	private void addMemberToGroupOrProject(String userId, String groupOrProjectId, int accessLevel, boolean isGroup) {
+		LOGGER.info("Adding member - User: {0}, ID: {1}, AccessLevel: {2}, IsGroup: {3}",
+				userId, groupOrProjectId, accessLevel, isGroup);
+
+		String path = isGroup ? GROUPS : PROJECTS;
+		StringBuilder sbPath = new StringBuilder();
+		sbPath.append(path).append("/").append(groupOrProjectId).append(MEMBERS);
+
+		JSONObject json = new JSONObject();
+		json.put(ATTR_USER_ID, userId);
+		json.put(ATTR_ACCESS_LEVEL, accessLevel);
+
+		try {
+			// Use POST request to add new member
+			createPutOrPostRequest(null, sbPath.toString(), json, true);
+		} catch (AlreadyExistsException e) {
+			// GitLab returns 409 Conflict with "Member already exists" when member exists with different access level
+			// Retry with update method if member already exists
+			LOGGER.info("Member already exists with different access level, updating access level instead");
+			updateMemberAccessLevel(userId, groupOrProjectId, accessLevel, isGroup);
+		}
+	}
+
+	private void removeMemberFromGroupOrProject(String userId, String groupOrProjectId, boolean isGroup) {
+		LOGGER.info("Removing member - User: {0}, ID: {1}, IsGroup: {2}",
+				userId, groupOrProjectId, isGroup);
+
+		String path = isGroup ? GROUPS : PROJECTS;
+		StringBuilder sbPath = new StringBuilder();
+		sbPath.append(path).append("/").append(groupOrProjectId).append(MEMBERS);
+
+		executeDeleteOperation(new Uid(userId), sbPath.toString());
+	}
+
+	private void processGroupMembershipChanges(Uid uid, Set<AttributeDelta> attributesDelta) {
+		collectAndProcessMembershipChanges(uid, attributesDelta, GROUP_ACCESS_LEVEL_MAP, true);
+	}
+
+	private void processProjectMembershipChanges(Uid uid, Set<AttributeDelta> attributesDelta) {
+		collectAndProcessMembershipChanges(uid, attributesDelta, PROJECT_ACCESS_LEVEL_MAP, false);
+	}
+
+	private void collectAndProcessMembershipChanges(Uid uid, Set<AttributeDelta> attributesDelta,
+													Map<String, Integer> accessLevelMap, boolean isGroup) {
+		// Collect all additions and removals across all access levels
+		Map<String, Integer> toAdd = new HashMap<>(); // entityId -> accessLevel
+		Set<String> toRemove = new HashSet<>();
+
+		for (AttributeDelta attrDelta : attributesDelta) {
+			// Check if this attribute is in the access level map
+			Integer accessLevel = accessLevelMap.get(attrDelta.getName());
+
+			if (accessLevel != null) {
+				// Collect removals
+				List<Object> removeValues = attrDelta.getValuesToRemove();
+				if (removeValues != null) {
+					for (Object value : removeValues) {
+						if (value != null) {
+							toRemove.add((String) value);
+						}
+					}
+				}
+
+				// Collect additions
+				List<Object> addValues = attrDelta.getValuesToAdd();
+				if (addValues != null) {
+					for (Object value : addValues) {
+						if (value != null) {
+							toAdd.put((String) value, accessLevel);
+						}
+					}
+				}
+			}
+		}
+
+		// Process the collected changes
+		if (!toAdd.isEmpty() || !toRemove.isEmpty()) {
+			processMembershipChanges(uid, toAdd, toRemove, isGroup);
+		}
+	}
+
+	private void processMembershipChanges(Uid uid, Map<String, Integer> toAdd, Set<String> toRemove, boolean isGroup) {
+		// Find entities that are in both add and remove (access level change)
+		Set<String> toUpdate = new HashSet<>();
+		for (String entityId : toAdd.keySet()) {
+			if (toRemove.contains(entityId)) {
+				toUpdate.add(entityId);
+			}
+		}
+
+		// Update access levels for entities that are being modified
+		for (String entityId : toUpdate) {
+			Integer newAccessLevel = toAdd.get(entityId);
+			updateMemberAccessLevel(uid.getUidValue(), entityId, newAccessLevel, isGroup);
+		}
+
+		// Remove entities from both sets if they were updated
+		toUpdate.forEach(entityId -> {
+			toAdd.remove(entityId);
+			toRemove.remove(entityId);
+		});
+
+		// Process remaining removals (pure removes, not access level changes)
+		for (String entityId : toRemove) {
+			removeMemberFromGroupOrProject(uid.getUidValue(), entityId, isGroup);
+		}
+
+		// Process remaining additions (pure adds, not access level changes)
+		for (Map.Entry<String, Integer> entry : toAdd.entrySet()) {
+			addMemberToGroupOrProject(uid.getUidValue(), entry.getKey(), entry.getValue(), isGroup);
+		}
 	}
 
 	private void putRequestedPassword(Boolean create, Set<Attribute> attributes, JSONObject json) {
