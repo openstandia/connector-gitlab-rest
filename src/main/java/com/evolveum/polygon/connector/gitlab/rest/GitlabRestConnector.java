@@ -25,9 +25,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.http.HttpHost;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.identityconnectors.common.CollectionUtil;
+import org.identityconnectors.common.StringUtil;
 import org.identityconnectors.common.logging.Log;
 import org.identityconnectors.framework.common.exceptions.ConnectorIOException;
 import org.identityconnectors.framework.common.exceptions.InvalidAttributeValueException;
@@ -46,6 +54,7 @@ import org.identityconnectors.framework.common.objects.filter.FilterTranslator;
 import org.identityconnectors.framework.spi.Configuration;
 import org.identityconnectors.framework.spi.Connector;
 import org.identityconnectors.framework.spi.ConnectorClass;
+import org.identityconnectors.framework.spi.PoolableConnector;
 import org.identityconnectors.framework.spi.operations.CreateOp;
 import org.identityconnectors.framework.spi.operations.SchemaOp;
 import org.identityconnectors.framework.spi.operations.SearchOp;
@@ -55,7 +64,7 @@ import org.identityconnectors.framework.spi.operations.DeleteOp;
 
 @ConnectorClass(displayNameKey = "connector.gitlab.rest.display", configurationClass = GitlabRestConfiguration.class)
 public class GitlabRestConnector
-		implements TestOp, SchemaOp, Connector, CreateOp, DeleteOp, UpdateDeltaOp, SearchOp<Filter> {
+		implements TestOp, SchemaOp, Connector, CreateOp, DeleteOp, UpdateDeltaOp, SearchOp<Filter>, PoolableConnector {
 
 	private static final Log LOGGER = Log.getLog(GitlabRestConnector.class);
 	private GitlabRestConfiguration configuration;
@@ -81,7 +90,51 @@ public class GitlabRestConnector
 
 		this.configuration = (GitlabRestConfiguration) configuration;
 		this.configuration.validate();
-		httpclient = HttpClientBuilder.create().build();
+
+		HttpClientBuilder httpClientBuilder = HttpClientBuilder.create();
+
+		// Configure connection pooling with small size
+		// Since this connector implements PoolableConnector, ConnID manages connector instance pooling.
+		// We limit HttpClient's internal connection pool to avoid redundant pooling.
+		PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+		connectionManager.setMaxTotal(10); // Limit total connections
+		connectionManager.setDefaultMaxPerRoute(5); // Limit per-route connections
+		httpClientBuilder.setConnectionManager(connectionManager);
+
+		// Configure timeouts
+		RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
+				.setConnectTimeout(this.configuration.getHttpConnectTimeout())
+				.setSocketTimeout(this.configuration.getHttpSocketTimeout())
+				.setConnectionRequestTimeout(this.configuration.getHttpConnectionRequestTimeout());
+
+		// Configure proxy if specified
+		if (StringUtil.isNotBlank(this.configuration.getHttpProxyHost()) &&
+				this.configuration.getHttpProxyPort() != null &&
+				this.configuration.getHttpProxyPort() > 0) {
+
+			HttpHost proxy = new HttpHost(
+					this.configuration.getHttpProxyHost(),
+					this.configuration.getHttpProxyPort());
+			requestConfigBuilder.setProxy(proxy);
+
+			// Configure proxy authentication if credentials provided
+			if (StringUtil.isNotBlank(this.configuration.getHttpProxyUser()) &&
+					this.configuration.getHttpProxyPassword() != null) {
+				CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+				this.configuration.getHttpProxyPassword().access(chars -> {
+					credentialsProvider.setCredentials(
+							new AuthScope(this.configuration.getHttpProxyHost(),
+									this.configuration.getHttpProxyPort()),
+							new UsernamePasswordCredentials(
+									this.configuration.getHttpProxyUser(),
+									String.valueOf(chars)));
+				});
+				httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
+			}
+		}
+
+		httpClientBuilder.setDefaultRequestConfig(requestConfigBuilder.build());
+		httpclient = httpClientBuilder.build();
 	}
 
 	@Override
@@ -320,5 +373,10 @@ public class GitlabRestConnector
 			LOGGER.error("The value of the ObjectClass parameter is unsupported.");
 			throw new UnsupportedOperationException("The value of the ObjectClass parameter is unsupported.");
 		}
+	}
+
+	@Override
+	public void checkAlive() {
+		// No op
 	}
 }

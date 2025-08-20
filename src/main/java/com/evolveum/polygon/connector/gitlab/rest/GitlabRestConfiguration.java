@@ -30,15 +30,24 @@ import org.identityconnectors.framework.spi.StatefulConfiguration;
 
 public class GitlabRestConfiguration extends AbstractConfiguration implements StatefulConfiguration{
 
-
 	private String loginUrl;
-    private String protocol;
+	private String protocol;
 	private GuardedString privateToken;
-    private String groupsToManage;
-    private String objectAvatar;
-	private static final Log LOGGER = Log.getLog(GitlabRestConnector.class);
-        
+	private String groupsToManage;
+	private String objectAvatar;
 
+	// HTTP Proxy settings
+	private String httpProxyHost;
+	private Integer httpProxyPort;
+	private String httpProxyUser;
+	private GuardedString httpProxyPassword;
+
+	// HTTP Timeout settings (in milliseconds)
+	private Integer httpConnectTimeout = 10000; // Default 10 seconds
+	private Integer httpSocketTimeout = 10000; // Default 10 seconds
+	private Integer httpConnectionRequestTimeout = 10000; // Default 10 seconds
+
+	private static final Log LOGGER = Log.getLog(GitlabRestConnector.class);
 
 	@ConfigurationProperty(order = 1, displayMessageKey = "privateToken.display", helpMessageKey = "privateToken.help", required = true, confidential = true)
 	public GuardedString getPrivateToken() {
@@ -53,7 +62,7 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 	public void setPrivateToken(GuardedString privateToken) {
 		this.privateToken = privateToken;
 	}
-        
+
 	@ConfigurationProperty(order = 3, displayMessageKey = "loginUrl.display", helpMessageKey = "loginUrl.help", required = true, confidential = false)
 	public String getLoginURL() {
 		return loginUrl;
@@ -62,43 +71,117 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 	public void setLoginURL(String loginURL) {
 		this.loginUrl = loginURL;
 	}
-        
-    // Add protocol configuration property to support https        
-    @ConfigurationProperty(order = 4, displayMessageKey = "protocol.display", helpMessageKey = "protocol.help", required = false, confidential = false)
+
+	// Add protocol configuration property to support https
+	@ConfigurationProperty(order = 4, displayMessageKey = "protocol.display", helpMessageKey = "protocol.help", required = false, confidential = false)
 	public String getProtocol() {
-	    return protocol;
+		return protocol;
 	}
-       
-    // Add groupsToManage configuration property to limit number of groups and memberships in these groupd that will be managed by connector. If null or empty then all groups. Symbol Coma "," is delimiter       
-    @ConfigurationProperty(order = 5, displayMessageKey = "groupsToManage.display", helpMessageKey = "groupsToManage.help", required = false, confidential = false)
 
-    public String getGroupsToManage() {
-        return groupsToManage;
-    }
+	// Add groupsToManage configuration property to limit number of groups and memberships in these groupd that will be managed by connector. If null or empty then all groups. Symbol Coma "," is delimiter
+	@ConfigurationProperty(order = 5, displayMessageKey = "groupsToManage.display", helpMessageKey = "groupsToManage.help", required = false, confidential = false)
 
-    
-    // Add objectAvatar configuration property to support choose objectAvatar is selected or no by Groups and Project
-    // Workaroud for issue https://gitlab.com/gitlab-org/gitlab/-/issues/25498
-    //@ConfigurationProperty(order = 6, displayMessageKey = "objectAvatar.display", helpMessageKey = "objectAvatar.help", required = true, confidential = false)
-    
-    public String getObjectAvatar() {
-	    return objectAvatar;
-    }    
-    
-    public void setGroupsToManage(String groupsToManage) {
-         this.groupsToManage = groupsToManage;
-    }
+	public String getGroupsToManage() {
+		return groupsToManage;
+	}
 
-    public void setProtocol(String protocol) {
-         this.protocol = protocol;
-    }
-    
-    public void setObjectAvatar(String objectAvatar) {
-    	this.objectAvatar = objectAvatar;
-    }
-    
-        
-	    
+	// Add objectAvatar configuration property to support choose objectAvatar is selected or no by Groups and Project
+	// Workaroud for issue https://gitlab.com/gitlab-org/gitlab/-/issues/25498
+	//@ConfigurationProperty(order = 6, displayMessageKey = "objectAvatar.display", helpMessageKey = "objectAvatar.help", required = true, confidential = false)
+	public String getObjectAvatar() {
+		return objectAvatar;
+	}
+
+	public void setGroupsToManage(String groupsToManage) {
+		this.groupsToManage = groupsToManage;
+	}
+
+	public void setProtocol(String protocol) {
+		this.protocol = protocol;
+	}
+
+	public void setObjectAvatar(String objectAvatar) {
+		this.objectAvatar = objectAvatar;
+	}
+
+	// HTTP Proxy getters and setters
+	@ConfigurationProperty(order = 7, displayMessageKey = "httpProxyHost.display",
+			helpMessageKey = "httpProxyHost.help",
+			required = false, confidential = false)
+	public String getHttpProxyHost() {
+		return httpProxyHost;
+	}
+
+	public void setHttpProxyHost(String httpProxyHost) {
+		this.httpProxyHost = httpProxyHost;
+	}
+
+	@ConfigurationProperty(order = 8, displayMessageKey = "httpProxyPort.display",
+			helpMessageKey = "httpProxyPort.help",
+			required = false, confidential = false)
+	public Integer getHttpProxyPort() {
+		return httpProxyPort;
+	}
+
+	public void setHttpProxyPort(Integer httpProxyPort) {
+		this.httpProxyPort = httpProxyPort;
+	}
+
+	@ConfigurationProperty(order = 9, displayMessageKey = "httpProxyUser.display",
+			helpMessageKey = "httpProxyUser.help",
+			required = false, confidential = false)
+	public String getHttpProxyUser() {
+		return httpProxyUser;
+	}
+
+	public void setHttpProxyUser(String httpProxyUser) {
+		this.httpProxyUser = httpProxyUser;
+	}
+
+	@ConfigurationProperty(order = 10, displayMessageKey = "httpProxyPassword.display",
+			helpMessageKey = "httpProxyPassword.help",
+			required = false, confidential = true)
+	public GuardedString getHttpProxyPassword() {
+		return httpProxyPassword;
+	}
+
+	public void setHttpProxyPassword(GuardedString httpProxyPassword) {
+		this.httpProxyPassword = httpProxyPassword;
+	}
+
+	// HTTP Timeout getters and setters
+	@ConfigurationProperty(order = 11, displayMessageKey = "httpConnectTimeout.display",
+			helpMessageKey = "httpConnectTimeout.help",
+			required = false, confidential = false)
+	public Integer getHttpConnectTimeout() {
+		return httpConnectTimeout;
+	}
+
+	public void setHttpConnectTimeout(Integer httpConnectTimeout) {
+		this.httpConnectTimeout = httpConnectTimeout;
+	}
+
+	@ConfigurationProperty(order = 12, displayMessageKey = "httpSocketTimeout.display",
+			helpMessageKey = "httpSocketTimeout.help",
+			required = false, confidential = false)
+	public Integer getHttpSocketTimeout() {
+		return httpSocketTimeout;
+	}
+
+	public void setHttpSocketTimeout(Integer httpSocketTimeout) {
+		this.httpSocketTimeout = httpSocketTimeout;
+	}
+
+	@ConfigurationProperty(order = 13, displayMessageKey = "httpConnectionRequestTimeout.display",
+			helpMessageKey = "httpConnectionRequestTimeout.help",
+			required = false, confidential = false)
+	public Integer getHttpConnectionRequestTimeout() {
+		return httpConnectionRequestTimeout;
+	}
+
+	public void setHttpConnectionRequestTimeout(Integer httpConnectionRequestTimeout) {
+		this.httpConnectionRequestTimeout = httpConnectionRequestTimeout;
+	}
 
 	@Override
 	public void validate() {
@@ -106,32 +189,61 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		if (StringUtil.isBlank(loginUrl)) {
 			throw new ConfigurationException("Login url cannot be empty.");
 		}
-		if ("".equals(privateToken)) {
+		if (privateToken == null) {
 			throw new ConfigurationException("Private Token cannot be empty.");
 		}
-                
-        if (protocol==null || !(protocol.equals("http") || protocol.equals("https") || protocol.isEmpty())) {
-		    throw new ConfigurationException("Protocol should be http or https.");
-        }
-		if (objectAvatar==null || !(objectAvatar.equals("true") || objectAvatar.equals("false") || objectAvatar.isEmpty())) {
+
+		if (protocol == null || !(protocol.equals("http") || protocol.equals("https") || protocol.isEmpty())) {
+			 throw new ConfigurationException("Protocol should be http or https.");
+		}
+		if (objectAvatar == null || !(objectAvatar.equals("true") || objectAvatar.equals("false") || objectAvatar.isEmpty())) {
 			throw new ConfigurationException("objectAvatar should be true or false.");
 		}
-		
+
+		// Validate proxy settings
+		if (httpProxyPort != null && (httpProxyPort <= 0 || httpProxyPort > 65535)) {
+			throw new ConfigurationException("HTTP Proxy Port must be between 1 and 65535.");
+		}
+
+		if (StringUtil.isNotBlank(httpProxyUser) && httpProxyPassword == null) {
+			throw new ConfigurationException("HTTP Proxy Password is required when Proxy User is specified.");
+		}
+
+		// Validate timeout settings
+		if (httpConnectTimeout != null && httpConnectTimeout <= 0) {
+			throw new ConfigurationException("HTTP Connect Timeout must be greater than 0.");
+		}
+
+		if (httpSocketTimeout != null && httpSocketTimeout <= 0) {
+			throw new ConfigurationException("HTTP Socket Timeout must be greater than 0.");
+		}
+
+		if (httpConnectionRequestTimeout != null && httpConnectionRequestTimeout <= 0) {
+			throw new ConfigurationException("HTTP Connection Request Timeout must be greater than 0.");
+		}
+
 		LOGGER.info("Configuration valid");
 	}
-	
+
 	@Override
 	public void release() {
 		LOGGER.info("The release of configuration resources is being performed");
 		this.loginUrl = null;                
 		this.privateToken.dispose();
-                this.protocol = null;
-                this.groupsToManage=null;
+		this.protocol = null;
+		this.groupsToManage = null;
+		this.objectAvatar = null;
+		this.httpProxyHost = null;
+		this.httpProxyPort = null;
+		this.httpProxyUser = null;
+		if (this.httpProxyPassword != null) {
+			this.httpProxyPassword.dispose();
+		}
 	}
 
 	@Override
 	public String toString() {
-		return "ScimConnectorConfiguration{" +
+		return "GitlabRestConfiguration{" +
 				", loginUrl='" + loginUrl + '\'' +
 				'}';
 	}
