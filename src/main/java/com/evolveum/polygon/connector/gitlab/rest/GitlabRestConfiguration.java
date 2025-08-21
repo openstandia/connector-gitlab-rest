@@ -23,6 +23,14 @@ import org.identityconnectors.framework.spi.AbstractConfiguration;
 import org.identityconnectors.framework.spi.ConfigurationProperty;
 import org.identityconnectors.framework.spi.StatefulConfiguration;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
 /**
  * @author Lukas Skublik
  *
@@ -32,7 +40,9 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 	private String loginUrl;
 	private String protocol;
 	private GuardedString privateToken;
-	private String groupsToManage;
+	private String[] groupsToManage;
+	private String[] groupsToManageRegex;
+	private Predicate<String> groupMatcher; // Cached predicate for performance
 	private String objectAvatar;
 
 	// HTTP Proxy settings
@@ -83,10 +93,9 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		return protocol;
 	}
 
-	// Add groupsToManage configuration property to limit number of groups and memberships in these groupd that will be managed by connector. If null or empty then all groups. Symbol Coma "," is delimiter
+	// Add groupsToManage configuration property to limit number of groups and memberships in these groups that will be managed by connector. If null or empty then all groups.
 	@ConfigurationProperty(order = 5, displayMessageKey = "groupsToManage.display", helpMessageKey = "groupsToManage.help", required = false, confidential = false)
-
-	public String getGroupsToManage() {
+	public String[] getGroupsToManage() {
 		return groupsToManage;
 	}
 
@@ -97,8 +106,28 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		return objectAvatar;
 	}
 
-	public void setGroupsToManage(String groupsToManage) {
+	public void setGroupsToManage(String[] groupsToManage) {
 		this.groupsToManage = groupsToManage;
+	}
+
+	// Add groupsToManageRegex configuration property to support regex patterns for group filtering
+	@ConfigurationProperty(order = 6, displayMessageKey = "groupsToManageRegex.display", helpMessageKey = "groupsToManageRegex.help", required = false, confidential = false)
+	public String[] getGroupsToManageRegex() {
+		return groupsToManageRegex;
+	}
+
+	public void setGroupsToManageRegex(String[] groupsToManageRegex) {
+		this.groupsToManageRegex = groupsToManageRegex;
+	}
+
+	/**
+	 * Returns the cached predicate for group matching.
+	 * This predicate is populated during validation for performance.
+	 *
+	 * @return Predicate that matches group names, or null if no filtering is configured
+	 */
+	public Predicate<String> getGroupMatcher() {
+		return groupMatcher;
 	}
 
 	public void setProtocol(String protocol) {
@@ -229,6 +258,43 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 			throw new ConfigurationException("objectAvatar should be true or false.");
 		}
 
+		// Build group matcher predicate combining literals and regex patterns
+		List<Predicate<String>> predicates = new ArrayList<>();
+
+		// Add literal matchers (case-insensitive)
+		if (groupsToManage != null && groupsToManage.length > 0) {
+			Set<String> literals = new HashSet<>();
+			for (String group : groupsToManage) {
+				if (group != null && !group.trim().isEmpty()) {
+					literals.add(group.trim().toLowerCase());
+				}
+			}
+			if (!literals.isEmpty()) {
+				predicates.add(name -> literals.contains(name.toLowerCase()));
+			}
+		}
+
+		// Add regex matchers (case-insensitive by default)
+		if (groupsToManageRegex != null && groupsToManageRegex.length > 0) {
+			for (String regex : groupsToManageRegex) {
+				if (regex != null && !regex.trim().isEmpty()) {
+					try {
+						Pattern pattern = Pattern.compile(regex.trim(), Pattern.CASE_INSENSITIVE);
+						predicates.add(name -> pattern.matcher(name).matches());
+					} catch (PatternSyntaxException e) {
+						throw new ConfigurationException("Invalid regex pattern in groupsToManageRegex: " + regex + " - " + e.getMessage());
+					}
+				}
+			}
+		}
+
+		// Combine all predicates with OR logic
+		if (!predicates.isEmpty()) {
+			groupMatcher = predicates.stream().reduce(Predicate::or).orElse(x -> false);
+		} else {
+			groupMatcher = null; // No filtering
+		}
+
 		// Validate proxy settings
 		if (httpProxyPort != null && (httpProxyPort <= 0 || httpProxyPort > 65535)) {
 			throw new ConfigurationException("HTTP Proxy Port must be between 1 and 65535.");
@@ -266,6 +332,8 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		this.privateToken.dispose();
 		this.protocol = null;
 		this.groupsToManage = null;
+		this.groupsToManageRegex = null;
+		this.groupMatcher = null;
 		this.objectAvatar = null;
 		this.httpProxyHost = null;
 		this.httpProxyPort = null;

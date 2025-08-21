@@ -39,6 +39,7 @@ import java.net.URISyntaxException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -985,8 +986,8 @@ public class UserProcessing extends ObjectProcessing {
 
 	public Stream<JSONObject> getUserAccessAsStream(String sbPath, String type) {
 		LOGGER.info("getUserAccess Start");
-		// Get groups or project to manage is informed by user on connector configuration
-		Map<String, String> groupsToManage = getGroupsForFilter(this.configuration.getGroupsToManage());
+		// Get group matcher predicate from configuration
+		Predicate<String> groupMatcher = this.configuration.getGroupMatcher();
 		Map<String, String> parameters = new HashMap<String, String>();
 
 		parameters.put(PER_PAGE, "100");
@@ -1000,29 +1001,16 @@ public class UserProcessing extends ObjectProcessing {
 		Stream<JSONObject> jsonObjectStream = IntStream.range(0, partOfGroupsOrProjects.length())
 				.mapToObj(partOfGroupsOrProjects::getJSONObject)
 				.filter(jsonObject -> {
-					if (groupsToManage == null) {
+					if (groupMatcher == null) {
 						return true;
 					}
-					return groupsToManage.containsKey(jsonObject.getString(ATTR_USER_MEMBERSHIPS_SRC_NAME).toLowerCase());
+					String groupName = jsonObject.getString(ATTR_USER_MEMBERSHIPS_SRC_NAME);
+					return groupMatcher.test(groupName);
 				});
 
 		LOGGER.info("getUserAccess End");
 
 		return jsonObjectStream;
-	}
-
-	private Map<String, String> getGroupsForFilter(String groupsToManage) {
-		LOGGER.info("getGroupsForFilter Start");
-		Map<String, String> groupArr = new HashMap<String, String>();
-		if (groupsToManage == null || groupsToManage.isEmpty()) {
-			return null;
-		}
-		String[] values = groupsToManage.toLowerCase().split(",");
-		for (String value : values) {
-			groupArr.put(value, value);
-		}
-		LOGGER.info("getGroupsForFilter End");
-		return groupArr;
 	}
 
 	private void updateMemberAccessLevel(String userId, String groupOrProjectId, int accessLevel, boolean isGroup) {
