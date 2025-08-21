@@ -27,6 +27,7 @@ import org.identityconnectors.framework.common.exceptions.AlreadyExistsException
 import org.identityconnectors.framework.common.exceptions.ConnectorException;
 import org.identityconnectors.framework.common.exceptions.ConnectorIOException;
 import org.identityconnectors.framework.common.exceptions.InvalidAttributeValueException;
+import org.identityconnectors.framework.common.exceptions.UnknownUidException;
 import org.identityconnectors.framework.common.objects.*;
 import org.identityconnectors.framework.common.objects.filter.ContainsFilter;
 import org.identityconnectors.framework.common.objects.filter.EqualsFilter;
@@ -1024,8 +1025,18 @@ public class UserProcessing extends ObjectProcessing {
 		JSONObject json = new JSONObject();
 		json.put(ATTR_ACCESS_LEVEL, accessLevel);
 
-		// Use PUT request to update existing member
-		createPutOrPostRequest(new Uid(userId), sbPath.toString(), json, false);
+		try {
+			// Use PUT request to update existing member
+			createPutOrPostRequest(new Uid(userId), sbPath.toString(), json, false);
+		} catch (UnknownUidException e) {
+			// 404 error in membership operations indicates invalid attribute values
+			// (either user ID or group/project ID doesn't exist)
+			String entityType = isGroup ? "group" : "project";
+			String message = String.format("Cannot update membership: user %s or %s %s not found",
+				userId, entityType, groupOrProjectId);
+			LOGGER.error("404 error updating member access level - {0}: {1}", message, e.getMessage());
+			throw new InvalidAttributeValueException(message);
+		}
 	}
 
 	private void addMemberToGroupOrProject(String userId, String groupOrProjectId, int accessLevel, boolean isGroup) {
@@ -1048,6 +1059,14 @@ public class UserProcessing extends ObjectProcessing {
 			// Retry with update method if member already exists
 			LOGGER.info("Member already exists with different access level, updating access level instead");
 			updateMemberAccessLevel(userId, groupOrProjectId, accessLevel, isGroup);
+		} catch (UnknownUidException e) {
+			// 404 error in membership operations indicates invalid attribute values
+			// (either user ID or group/project ID doesn't exist)
+			String entityType = isGroup ? "group" : "project";
+			String message = String.format("Cannot add membership: user %s or %s %s not found",
+				userId, entityType, groupOrProjectId);
+			LOGGER.error("404 error adding member - {0}: {1}", message, e.getMessage());
+			throw new InvalidAttributeValueException(message);
 		}
 	}
 
@@ -1059,7 +1078,12 @@ public class UserProcessing extends ObjectProcessing {
 		StringBuilder sbPath = new StringBuilder();
 		sbPath.append(path).append("/").append(groupOrProjectId).append(MEMBERS);
 
-		executeDeleteOperation(new Uid(userId), sbPath.toString());
+		try {
+			executeDeleteOperation(new Uid(userId), sbPath.toString());
+		} catch (UnknownUidException e) {
+			LOGGER.info("Member already removed (404 error) - User: {0}, ID: {1}, IsGroup: {2}. This is expected and will be ignored.",
+					userId, groupOrProjectId, isGroup);
+		}
 	}
 
 	private void processGroupMembershipChanges(Uid uid, Set<AttributeDelta> attributesDelta) {
