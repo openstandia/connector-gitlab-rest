@@ -763,31 +763,22 @@ public class UserProcessing extends ObjectProcessing {
 
 		if (groupsRequested || projectsRequested || allGroupsRequested || allProjectsRequested) {
 			if (allowPartialAttributeValues) {
-				// Skip fetching groups
+				// Skip fetching groups and projects
+				// Add incomplete attributes for ATTR_GROUPS_AS_* and ATTR_PROJECTS_AS_* if requested
 				for (String name : GROUP_ACCESS_LEVEL_MAP.keySet()) {
 					if (attributesToGetSet.contains(name)) {
-						AttributeBuilder attrBuilder = new AttributeBuilder();
-						attrBuilder.setName(name).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
-						attrBuilder.addValue(Collections.EMPTY_LIST);
-
-						builder.addAttribute(attrBuilder.build());
+						addIncompleteAttribute(builder, name);
 					}
 				}
 				// Add incomplete attributes for ATTR_GROUPS and ATTR_PROJECTS if requested
 				if (allGroupsRequested) {
-					AttributeBuilder attrBuilder = new AttributeBuilder();
-					attrBuilder.setName(ATTR_GROUPS).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
-					attrBuilder.addValue(Collections.EMPTY_LIST);
-					builder.addAttribute(attrBuilder.build());
+					addIncompleteAttribute(builder, ATTR_GROUPS);
 				}
 				if (allProjectsRequested) {
-					AttributeBuilder attrBuilder = new AttributeBuilder();
-					attrBuilder.setName(ATTR_PROJECTS).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
-					attrBuilder.addValue(Collections.EMPTY_LIST);
-					builder.addAttribute(attrBuilder.build());
+					addIncompleteAttribute(builder, ATTR_PROJECTS);
 				}
 			} else {
-				// Fetch groups
+				// Fetch groups and projects
 				final String type;
 				if ((groupsRequested || allGroupsRequested) && (projectsRequested || allProjectsRequested)) {
 					type = null;
@@ -836,7 +827,6 @@ public class UserProcessing extends ObjectProcessing {
 					AttributeBuilder attrBuilder = new AttributeBuilder();
 					attrBuilder.setName(entrySet.getKey());
 					attrBuilder.addValue(entrySet.getValue());
-
 					builder.addAttribute(attrBuilder.build());
 				}
 
@@ -1282,6 +1272,13 @@ public class UserProcessing extends ObjectProcessing {
 	 */
 	private String extractEntityId(String value) {
 		return value.contains("#") ? value.split("#", 2)[0] : value;
+	}
+
+	private void addIncompleteAttribute(ConnectorObjectBuilder builder, String attributeName) {
+		AttributeBuilder attrBuilder = new AttributeBuilder();
+		attrBuilder.setName(attributeName).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
+		attrBuilder.addValue(Collections.EMPTY_LIST);
+		builder.addAttribute(attrBuilder.build());
 	}
 
 }

@@ -15,11 +15,6 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-/**
- * @author Lukas Skublik
- *
- */
-
 import org.identityconnectors.common.StringUtil;
 import org.identityconnectors.common.logging.Log;
 import org.identityconnectors.common.security.GuardedString;
@@ -28,6 +23,10 @@ import org.identityconnectors.framework.spi.AbstractConfiguration;
 import org.identityconnectors.framework.spi.ConfigurationProperty;
 import org.identityconnectors.framework.spi.StatefulConfiguration;
 
+/**
+ * @author Lukas Skublik
+ *
+ */
 public class GitlabRestConfiguration extends AbstractConfiguration implements StatefulConfiguration{
 
 	private String loginUrl;

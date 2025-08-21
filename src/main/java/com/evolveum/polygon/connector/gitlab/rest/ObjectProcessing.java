@@ -15,11 +15,6 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-/**
- * @author Lukas Skublik
- *
- */
-
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -67,6 +62,10 @@ import org.identityconnectors.framework.spi.Configuration;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * @author Lukas Skublik
+ *
+ */
 public class ObjectProcessing {
 
 	protected static final Log LOGGER = Log.getLog(GitlabRestConnector.class);

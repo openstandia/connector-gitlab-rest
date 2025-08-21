@@ -15,11 +15,6 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-/**
- * @author Lukas Skublik
- *
- */
-
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
@@ -62,6 +57,10 @@ import org.identityconnectors.framework.spi.operations.TestOp;
 import org.identityconnectors.framework.spi.operations.UpdateDeltaOp;
 import org.identityconnectors.framework.spi.operations.DeleteOp;
 
+/**
+ * @author Lukas Skublik
+ *
+ */
 @ConnectorClass(displayNameKey = "connector.gitlab.rest.display", configurationClass = GitlabRestConfiguration.class)
 public class GitlabRestConnector
 		implements TestOp, SchemaOp, Connector, CreateOp, DeleteOp, UpdateDeltaOp, SearchOp<Filter>, PoolableConnector {
