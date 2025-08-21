@@ -49,6 +49,9 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 	// Default access level for groups and projects (10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner)
 	private Integer defaultAccessLevel = 10; // Default to Guest
 
+	// Control membership attribute format in executeQuery: true="id#accessLevel", false="id"
+	private Boolean includeMembershipAccessLevel = false; // Default to "id" format
+
 	private static final Log LOGGER = Log.getLog(GitlabRestConnector.class);
 
 	@ConfigurationProperty(order = 1, displayMessageKey = "privateToken.display", helpMessageKey = "privateToken.help", required = true, confidential = true)
@@ -197,6 +200,18 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		this.defaultAccessLevel = defaultAccessLevel;
 	}
 
+	// Include membership access level getters and setters
+	@ConfigurationProperty(order = 15, displayMessageKey = "includeMembershipAccessLevel.display",
+			helpMessageKey = "includeMembershipAccessLevel.help",
+			required = false, confidential = false)
+	public Boolean getIncludeMembershipAccessLevel() {
+		return includeMembershipAccessLevel;
+	}
+
+	public void setIncludeMembershipAccessLevel(Boolean includeMembershipAccessLevel) {
+		this.includeMembershipAccessLevel = includeMembershipAccessLevel;
+	}
+
 	@Override
 	public void validate() {
 		LOGGER.info("Processing trough configuration validation procedure.");
@@ -237,8 +252,8 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		}
 
 		// Validate default access level
-		if (defaultAccessLevel != null && (defaultAccessLevel < 10 || defaultAccessLevel > 50 || defaultAccessLevel % 10 != 0)) {
-			throw new ConfigurationException("Default Access Level must be one of: 10 (Guest), 20 (Reporter), 30 (Developer), 40 (Maintainer), 50 (Owner).");
+		if (defaultAccessLevel != null && defaultAccessLevel <= 0) {
+			throw new ConfigurationException("Default Access Level must be greater than 0.");
 		}
 
 		LOGGER.info("Configuration valid");
@@ -258,6 +273,7 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		if (this.httpProxyPassword != null) {
 			this.httpProxyPassword.dispose();
 		}
+		this.includeMembershipAccessLevel = null;
 	}
 
 	@Override

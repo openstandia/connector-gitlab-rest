@@ -803,12 +803,10 @@ public class UserProcessing extends ObjectProcessing {
 
 									// Collect all groups and projects for the consolidated attributes
 									if (srcType.equals(TYPE_MEMBERSHIPS_GROUP)) {
-										// Format: "id#accessLevel" (e.g., "123#10")
-										allGroups.add(srcId + "#" + accessLevel);
+										allGroups.add(formatMembershipValue(srcId, accessLevel));
 										return GROUP_ACCESS_LEVEL_MAP_REVERSED.get(accessLevel);
 									} else if (srcType.equals(TYPE_MEMBERSHIPS_PROJECT)) {
-										// Format: "id#accessLevel" (e.g., "456#10")
-										allProjects.add(srcId + "#" + accessLevel);
+										allProjects.add(formatMembershipValue(srcId, accessLevel));
 										return PROJECT_ACCESS_LEVEL_MAP_REVERSED.get(accessLevel);
 									}
 									return "";
@@ -1281,4 +1279,8 @@ public class UserProcessing extends ObjectProcessing {
 		builder.addAttribute(attrBuilder.build());
 	}
 
+	private String formatMembershipValue(String srcId, Integer accessLevel) {
+		return configuration.getIncludeMembershipAccessLevel() ?
+			srcId + "#" + accessLevel : srcId;
+	}
 }
