@@ -95,9 +95,10 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 	private static final String ATTR_OWNER_WEB_URL = "owner.web_url";
 
 	private static final String ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST = "shared_with_groups_max_guest";
+	private static final String ATTR_SHARED_WITH_GROUPS_ID_MAX_PLANNER = "shared_with_groups_max_planner";
 	private static final String ATTR_SHARED_WITH_GROUPS_ID_MAX_REPORTER = "shared_with_groups_reporter";
 	private static final String ATTR_SHARED_WITH_GROUPS_ID_MAX_DEVELOPER = "shared_with_groups_max_developer";
-	private static final String ATTR_SHARED_WITH_GROUPS_ID_MAX_MASTER = "shared_with_groups_max_master";
+	private static final String ATTR_SHARED_WITH_GROUPS_ID_MAX_MAINTAINER = "shared_with_groups_max_maintainer";
 	private static final String ATTR_SHARED_WITH_GROUPS_WITH_NAME = "shared_with_groups.name-access_level";
 
 	private static final String ATTR_GROUP_ID = "group_id";
@@ -367,6 +368,12 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 				.setUpdateable(true).setReadable(true);
 		projectObjClassBuilder.addAttributeInfo(attrSharedWithGroupsMaxGuestBuilder.build());
 
+		AttributeInfoBuilder attrSharedWithGroupsMaxPlannerBuilder = new AttributeInfoBuilder(
+				ATTR_SHARED_WITH_GROUPS_ID_MAX_PLANNER);
+		attrSharedWithGroupsMaxPlannerBuilder.setType(String.class).setMultiValued(true).setCreateable(true)
+				.setUpdateable(true).setReadable(true);
+		projectObjClassBuilder.addAttributeInfo(attrSharedWithGroupsMaxPlannerBuilder.build());
+
 		AttributeInfoBuilder attrSharedWithGroupsMaxReporterBuilder = new AttributeInfoBuilder(
 				ATTR_SHARED_WITH_GROUPS_ID_MAX_REPORTER);
 		attrSharedWithGroupsMaxReporterBuilder.setType(String.class).setMultiValued(true).setCreateable(true)
@@ -379,11 +386,11 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 				.setUpdateable(true).setReadable(true);
 		projectObjClassBuilder.addAttributeInfo(attrSharedWithGroupsMaxDeveloperBuilder.build());
 
-		AttributeInfoBuilder attrSharedWithGroupsMaxMasterBuilder = new AttributeInfoBuilder(
-				ATTR_SHARED_WITH_GROUPS_ID_MAX_MASTER);
-		attrSharedWithGroupsMaxMasterBuilder.setType(String.class).setMultiValued(true).setCreateable(true)
+		AttributeInfoBuilder attrSharedWithGroupsMaxMaintainerBuilder = new AttributeInfoBuilder(
+				ATTR_SHARED_WITH_GROUPS_ID_MAX_MAINTAINER);
+		attrSharedWithGroupsMaxMaintainerBuilder.setType(String.class).setMultiValued(true).setCreateable(true)
 				.setUpdateable(true).setReadable(true);
-		projectObjClassBuilder.addAttributeInfo(attrSharedWithGroupsMaxMasterBuilder.build());
+		projectObjClassBuilder.addAttributeInfo(attrSharedWithGroupsMaxMaintainerBuilder.build());
 
 		schemaBuilder.defineObjectClass(projectObjClassBuilder.build());
 	}
@@ -563,11 +570,13 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 			if (((ContainsAllValuesFilter) query).getAttribute().getName()
 					.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST)
 					|| ((ContainsAllValuesFilter) query).getAttribute().getName()
+							.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_PLANNER)
+					|| ((ContainsAllValuesFilter) query).getAttribute().getName()
 							.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_REPORTER)
 					|| ((ContainsAllValuesFilter) query).getAttribute().getName()
 							.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_DEVELOPER)
 					|| ((ContainsAllValuesFilter) query).getAttribute().getName()
-							.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_MASTER)) {
+							.equals(ATTR_SHARED_WITH_GROUPS_ID_MAX_MAINTAINER)) {
 
 				List<Object> allValues = ((ContainsAllValuesFilter) query).getAttribute().getValue();
 				if (allValues == null) {
@@ -654,9 +663,10 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 	private void addAttributeForSharedProjects(JSONObject object, ConnectorObjectBuilder builder) {
 
 		List<String> guestSharedWithGroup = new ArrayList<>();
+		List<String> plannerSharedWithGroup = new ArrayList<>();
 		List<String> reporterSharedWithGroup = new ArrayList<>();
 		List<String> developerSharedWithGroup = new ArrayList<>();
-		List<String> masterSharedWithGroup = new ArrayList<>();
+		List<String> maintainerSharedWithGroup = new ArrayList<>();
 		List<String> sharedWithGroupWithName = new ArrayList<>();
 
 		if (object.has(ATTR_SHARED_WITH_GROUPS)) {
@@ -675,6 +685,9 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 							if (access_level == 10) {
 								guestSharedWithGroup.add(groupId);
 							}
+							if (access_level == 15) {
+								plannerSharedWithGroup.add(groupId);
+							}
 							if (access_level == 20) {
 								reporterSharedWithGroup.add(groupId);
 							}
@@ -682,7 +695,7 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 								developerSharedWithGroup.add(groupId);
 							}
 							if (access_level == 40) {
-								masterSharedWithGroup.add(groupId);
+								maintainerSharedWithGroup.add(groupId);
 							}
 							StringBuilder sb = new StringBuilder();
 							sb.append(groupFullPath).append(":").append(access_level);
@@ -693,6 +706,9 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 					if (!guestSharedWithGroup.isEmpty()) {
 						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST, guestSharedWithGroup.toArray());
 					}
+					if (!plannerSharedWithGroup.isEmpty()) {
+						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_ID_MAX_PLANNER, plannerSharedWithGroup.toArray());
+					}
 					if (!reporterSharedWithGroup.isEmpty()) {
 						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_ID_MAX_REPORTER,
 								reporterSharedWithGroup.toArray());
@@ -701,8 +717,8 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_ID_MAX_DEVELOPER,
 								developerSharedWithGroup.toArray());
 					}
-					if (!masterSharedWithGroup.isEmpty()) {
-						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_ID_MAX_MASTER, masterSharedWithGroup.toArray());
+					if (!maintainerSharedWithGroup.isEmpty()) {
+						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_ID_MAX_MAINTAINER, maintainerSharedWithGroup.toArray());
 					}
 					if (!sharedWithGroupWithName.isEmpty()) {
 						builder.addAttribute(ATTR_SHARED_WITH_GROUPS_WITH_NAME, sharedWithGroupWithName.toArray());
@@ -735,13 +751,16 @@ public class ProjectProcessing extends GroupOrProjectProcessing {
 			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_GUEST.equals(attrDelta.getName())) {
 				createOrDeleteSharingWithGroup(uid, attrDelta, 10);
 			}
+			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_PLANNER.equals(attrDelta.getName())) {
+				createOrDeleteSharingWithGroup(uid, attrDelta, 15);
+			}
 			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_REPORTER.equals(attrDelta.getName())) {
 				createOrDeleteSharingWithGroup(uid, attrDelta, 20);
 			}
 			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_DEVELOPER.equals(attrDelta.getName())) {
 				createOrDeleteSharingWithGroup(uid, attrDelta, 30);
 			}
-			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_MASTER.equals(attrDelta.getName())) {
+			if (ATTR_SHARED_WITH_GROUPS_ID_MAX_MAINTAINER.equals(attrDelta.getName())) {
 				createOrDeleteSharingWithGroup(uid, attrDelta, 40);
 			}
 			if (ATTR_TAG_LIST.equals(attrDelta.getName())) {

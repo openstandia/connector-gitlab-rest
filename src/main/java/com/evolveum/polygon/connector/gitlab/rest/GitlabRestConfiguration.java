@@ -46,7 +46,7 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 	private Integer httpSocketTimeout = 10000; // Default 10 seconds
 	private Integer httpConnectionRequestTimeout = 10000; // Default 10 seconds
 
-	// Default access level for groups and projects (10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner)
+	// Default access level for groups and projects
 	private Integer defaultAccessLevel = 10; // Default to Guest
 
 	// Control membership attribute format in executeQuery: true="id#accessLevel", false="id"

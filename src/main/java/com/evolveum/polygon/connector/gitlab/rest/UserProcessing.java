@@ -94,15 +94,17 @@ public class UserProcessing extends ObjectProcessing {
 	private static final String ATTR_TWO_FACTOR_ENABLED = "two_factor_enabled";
 	private static final String ATTR_SSH_KEYS = "SSH_keys";
 	protected static final String ATTR_GROUPS_AS_OWNER = "groups_as_owner";
-	protected static final String ATTR_GROUPS_AS_MASTER = "groups_as_master";
+	protected static final String ATTR_GROUPS_AS_MAINTAINER = "groups_as_maintainer";
 	protected static final String ATTR_GROUPS_AS_DEVELOPER = "groups_as_developer";
 	protected static final String ATTR_GROUPS_AS_REPORTER = "groups_as_reporter";
+	protected static final String ATTR_GROUPS_AS_PLANNER = "groups_as_planner";
 	protected static final String ATTR_GROUPS_AS_GUEST = "groups_as_guest";
 	protected static final String ATTR_GROUPS = "groups";
 	protected static final String ATTR_PROJECTS_AS_OWNER = "projects_as_owner";
-	protected static final String ATTR_PROJECTS_AS_MASTER = "projects_as_master";
+	protected static final String ATTR_PROJECTS_AS_MAINTAINER = "projects_as_maintainer";
 	protected static final String ATTR_PROJECTS_AS_DEVELOPER = "projects_as_developer";
 	protected static final String ATTR_PROJECTS_AS_REPORTER = "projects_as_reporter";
+	protected static final String ATTR_PROJECTS_AS_PLANNER = "projects_as_planner";
 	protected static final String ATTR_PROJECTS_AS_GUEST = "projects_as_guest";
 	protected static final String ATTR_PROJECTS = "projects";
 	// User memberships - Introduced in Gitlab 12.8
@@ -120,16 +122,18 @@ public class UserProcessing extends ObjectProcessing {
 
 	protected static final Map<String, Integer> GROUP_ACCESS_LEVEL_MAP = Map.of(
 			ATTR_GROUPS_AS_OWNER, 50,
-			ATTR_GROUPS_AS_MASTER, 40,
+			ATTR_GROUPS_AS_MAINTAINER, 40,
 			ATTR_GROUPS_AS_DEVELOPER, 30,
 			ATTR_GROUPS_AS_REPORTER, 20,
+			ATTR_GROUPS_AS_PLANNER, 15,
 			ATTR_GROUPS_AS_GUEST, 10
 	);
 	protected static final Map<String, Integer> PROJECT_ACCESS_LEVEL_MAP = Map.of(
 			ATTR_PROJECTS_AS_OWNER, 50,
-			ATTR_PROJECTS_AS_MASTER, 40,
+			ATTR_PROJECTS_AS_MAINTAINER, 40,
 			ATTR_PROJECTS_AS_DEVELOPER, 30,
 			ATTR_PROJECTS_AS_REPORTER, 20,
+			ATTR_PROJECTS_AS_PLANNER, 15,
 			ATTR_PROJECTS_AS_GUEST, 10
 	);
 	protected static final Map<Integer, String> GROUP_ACCESS_LEVEL_MAP_REVERSED = GROUP_ACCESS_LEVEL_MAP.entrySet().stream()
@@ -283,10 +287,10 @@ public class UserProcessing extends ObjectProcessing {
 				.setReturnedByDefault(false);
 		userObjClassBuilder.addAttributeInfo(attrGroupsAsOwnerBuilder.build());
 
-		AttributeInfoBuilder attrGroupsAsMasterBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_MASTER);
-		attrGroupsAsMasterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+		AttributeInfoBuilder attrGroupsAsMaintainerBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_MAINTAINER);
+		attrGroupsAsMaintainerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
-		userObjClassBuilder.addAttributeInfo(attrGroupsAsMasterBuilder.build());
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsMaintainerBuilder.build());
 
 		AttributeInfoBuilder attrGroupsAsDeveloperBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_DEVELOPER);
 		attrGroupsAsDeveloperBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
@@ -297,6 +301,11 @@ public class UserProcessing extends ObjectProcessing {
 		attrGroupsAsReporterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
 		userObjClassBuilder.addAttributeInfo(attrGroupsAsReporterBuilder.build());
+
+		AttributeInfoBuilder attrGroupsAsPlannerBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_PLANNER);
+		attrGroupsAsPlannerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsAsPlannerBuilder.build());
 
 		AttributeInfoBuilder attrGroupsAsGuestBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_GUEST);
 		attrGroupsAsGuestBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
@@ -315,10 +324,10 @@ public class UserProcessing extends ObjectProcessing {
 				.setReturnedByDefault(false);
 		userObjClassBuilder.addAttributeInfo(attrProjectsAsOwnerBuilder.build());
 
-		AttributeInfoBuilder attrProjectsAsMasterBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_MASTER);
-		attrProjectsAsMasterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+		AttributeInfoBuilder attrProjectsAsMaintainerBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_MAINTAINER);
+		attrProjectsAsMaintainerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
-		userObjClassBuilder.addAttributeInfo(attrProjectsAsMasterBuilder.build());
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsMaintainerBuilder.build());
 
 		AttributeInfoBuilder attrProjectsAsDeveloperBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_DEVELOPER);
 		attrProjectsAsDeveloperBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
@@ -329,6 +338,11 @@ public class UserProcessing extends ObjectProcessing {
 		attrProjectsAsReporterBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
 		userObjClassBuilder.addAttributeInfo(attrProjectsAsReporterBuilder.build());
+
+		AttributeInfoBuilder attrProjectsAsPlannerBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_PLANNER);
+		attrProjectsAsPlannerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsAsPlannerBuilder.build());
 
 		AttributeInfoBuilder attrProjectsAsGuestBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_GUEST);
 		attrProjectsAsGuestBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
