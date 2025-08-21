@@ -98,11 +98,13 @@ public class UserProcessing extends ObjectProcessing {
 	protected static final String ATTR_GROUPS_AS_DEVELOPER = "groups_as_developer";
 	protected static final String ATTR_GROUPS_AS_REPORTER = "groups_as_reporter";
 	protected static final String ATTR_GROUPS_AS_GUEST = "groups_as_guest";
+	protected static final String ATTR_GROUPS = "groups";
 	protected static final String ATTR_PROJECTS_AS_OWNER = "projects_as_owner";
 	protected static final String ATTR_PROJECTS_AS_MASTER = "projects_as_master";
 	protected static final String ATTR_PROJECTS_AS_DEVELOPER = "projects_as_developer";
 	protected static final String ATTR_PROJECTS_AS_REPORTER = "projects_as_reporter";
 	protected static final String ATTR_PROJECTS_AS_GUEST = "projects_as_guest";
+	protected static final String ATTR_PROJECTS = "projects";
 	// User memberships - Introduced in Gitlab 12.8
 	protected static final String USERS_MEMBERSHIPS_URL = "/memberships";
 	protected static final String TYPE_MEMBERSHIPS = "type";
@@ -275,7 +277,7 @@ public class UserProcessing extends ObjectProcessing {
 				.setReadable(true);
 		userObjClassBuilder.addAttributeInfo(sshKeysBuilder.build());
 
-		// Group membership
+		// Group membership attributes - each attribute represents group memberships at a specific access level
 		AttributeInfoBuilder attrGroupsAsOwnerBuilder = new AttributeInfoBuilder(ATTR_GROUPS_AS_OWNER);
 		attrGroupsAsOwnerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
@@ -301,7 +303,13 @@ public class UserProcessing extends ObjectProcessing {
 				.setReturnedByDefault(false);
 		userObjClassBuilder.addAttributeInfo(attrGroupsAsGuestBuilder.build());
 
-		// Project membership
+		// Group membership attribute - represents all group memberships regardless of access level
+		AttributeInfoBuilder attrGroupsBuilder = new AttributeInfoBuilder(ATTR_GROUPS);
+		attrGroupsBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrGroupsBuilder.build());
+
+		// Project membership attributes - each attribute represents project memberships at a specific access level
 		AttributeInfoBuilder attrProjectsAsOwnerBuilder = new AttributeInfoBuilder(ATTR_PROJECTS_AS_OWNER);
 		attrProjectsAsOwnerBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
@@ -326,6 +334,12 @@ public class UserProcessing extends ObjectProcessing {
 		attrProjectsAsGuestBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
 				.setReturnedByDefault(false);
 		userObjClassBuilder.addAttributeInfo(attrProjectsAsGuestBuilder.build());
+
+		// Project membership attribute - represents all project memberships regardless of access level
+		AttributeInfoBuilder attrProjectsBuilder = new AttributeInfoBuilder(ATTR_PROJECTS);
+		attrProjectsBuilder.setType(String.class).setMultiValued(true).setCreateable(true).setUpdateable(true).setReadable(true)
+				.setReturnedByDefault(false);
+		userObjClassBuilder.addAttributeInfo(attrProjectsBuilder.build());
 
 		// password related attributes
 		userObjClassBuilder.addAttributeInfo(OperationalAttributeInfos.PASSWORD);
@@ -420,29 +434,23 @@ public class UserProcessing extends ObjectProcessing {
 						}
 					}
 				}
+				// Handle ATTR_GROUPS - supports format "id#accessLevel" or just "id"
+				if (ATTR_GROUPS.equals(attr.getName())) {
+					processMembershipAttributeForCreate(attr, newUid, true, null);
+				}
+				// Handle ATTR_PROJECTS - supports format "id#accessLevel" or just "id"
+				if (ATTR_PROJECTS.equals(attr.getName())) {
+					processMembershipAttributeForCreate(attr, newUid, false, null);
+				}
 				// Handle group memberships
 				Integer groupAccessLevel = GROUP_ACCESS_LEVEL_MAP.get(attr.getName());
 				if (groupAccessLevel != null) {
-					List<Object> vals = attr.getValue();
-					if (vals != null && !vals.isEmpty()) {
-						for (Object value : vals) {
-							if (value != null) {
-								addMemberToGroupOrProject(newUid.getUidValue(), (String) value, groupAccessLevel, true);
-							}
-						}
-					}
+					processMembershipAttributeForCreate(attr, newUid, true, groupAccessLevel);
 				}
 				// Handle project memberships
 				Integer projectAccessLevel = PROJECT_ACCESS_LEVEL_MAP.get(attr.getName());
 				if (projectAccessLevel != null) {
-					List<Object> vals = attr.getValue();
-					if (vals != null && !vals.isEmpty()) {
-						for (Object value : vals) {
-							if (value != null) {
-								addMemberToGroupOrProject(newUid.getUidValue(), (String) value, projectAccessLevel, false);
-							}
-						}
-					}
+					processMembershipAttributeForCreate(attr, newUid, false, projectAccessLevel);
 				}
 			}
 		}
@@ -750,8 +758,10 @@ public class UserProcessing extends ObjectProcessing {
 
 		boolean groupsRequested = isGroupsRequested(attributesToGetSet);
 		boolean projectsRequested = isProjectsRequested(attributesToGetSet);
+		boolean allGroupsRequested = attributesToGetSet.contains(ATTR_GROUPS);
+		boolean allProjectsRequested = attributesToGetSet.contains(ATTR_PROJECTS);
 
-		if (groupsRequested || projectsRequested) {
+		if (groupsRequested || projectsRequested || allGroupsRequested || allProjectsRequested) {
 			if (allowPartialAttributeValues) {
 				// Skip fetching groups
 				for (String name : GROUP_ACCESS_LEVEL_MAP.keySet()) {
@@ -763,16 +773,34 @@ public class UserProcessing extends ObjectProcessing {
 						builder.addAttribute(attrBuilder.build());
 					}
 				}
+				// Add incomplete attributes for ATTR_GROUPS and ATTR_PROJECTS if requested
+				if (allGroupsRequested) {
+					AttributeBuilder attrBuilder = new AttributeBuilder();
+					attrBuilder.setName(ATTR_GROUPS).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
+					attrBuilder.addValue(Collections.EMPTY_LIST);
+					builder.addAttribute(attrBuilder.build());
+				}
+				if (allProjectsRequested) {
+					AttributeBuilder attrBuilder = new AttributeBuilder();
+					attrBuilder.setName(ATTR_PROJECTS).setAttributeValueCompleteness(AttributeValueCompleteness.INCOMPLETE);
+					attrBuilder.addValue(Collections.EMPTY_LIST);
+					builder.addAttribute(attrBuilder.build());
+				}
 			} else {
 				// Fetch groups
 				final String type;
-				if (groupsRequested && projectsRequested) {
+				if ((groupsRequested || allGroupsRequested) && (projectsRequested || allProjectsRequested)) {
 					type = null;
-				} else if (groupsRequested) {
+				} else if (groupsRequested || allGroupsRequested) {
 					type = TYPE_MEMBERSHIPS_GROUP;
 				} else {
 					type = TYPE_MEMBERSHIPS_PROJECT;
 				}
+
+				// Collect all groups and projects
+				Set<String> allGroups = new HashSet<>();
+				Set<String> allProjects = new HashSet<>();
+
 				Map<String, List<String>> groups = getUserAccessAsStream(USERS + "/" + userUidValue + "/" + USERS_MEMBERSHIPS_URL, type)
 						.filter(jsonObject -> GROUP_ACCESS_LEVEL_MAP_REVERSED.containsKey(jsonObject.getInt(ATTR_USER_MEMBERSHIPS_ACCESS_LEVEL))) // Filter by supported accessLevel
 						.collect(Collectors.groupingBy(
@@ -780,9 +808,16 @@ public class UserProcessing extends ObjectProcessing {
 								jsonObject -> {
 									Integer accessLevel = jsonObject.getInt(ATTR_USER_MEMBERSHIPS_ACCESS_LEVEL);
 									String srcType = jsonObject.getString(ATTR_USER_MEMBERSHIPS_SRC_TYPE);
+									String srcId = String.valueOf(jsonObject.getInt(ATTR_USER_MEMBERSHIPS_SRC_ID));
+
+									// Collect all groups and projects for the consolidated attributes
 									if (srcType.equals(TYPE_MEMBERSHIPS_GROUP)) {
+										// Format: "id#accessLevel" (e.g., "123#10")
+										allGroups.add(srcId + "#" + accessLevel);
 										return GROUP_ACCESS_LEVEL_MAP_REVERSED.get(accessLevel);
 									} else if (srcType.equals(TYPE_MEMBERSHIPS_PROJECT)) {
+										// Format: "id#accessLevel" (e.g., "456#10")
+										allProjects.add(srcId + "#" + accessLevel);
 										return PROJECT_ACCESS_LEVEL_MAP_REVERSED.get(accessLevel);
 									}
 									return "";
@@ -792,6 +827,8 @@ public class UserProcessing extends ObjectProcessing {
 										Collectors.toList()
 								)
 						));
+
+				// Add access-level specific attributes
 				for (Map.Entry<String, List<String>> entrySet : groups.entrySet()) {
 					if (entrySet.getKey().isEmpty()) {
 						continue;
@@ -800,6 +837,22 @@ public class UserProcessing extends ObjectProcessing {
 					attrBuilder.setName(entrySet.getKey());
 					attrBuilder.addValue(entrySet.getValue());
 
+					builder.addAttribute(attrBuilder.build());
+				}
+
+				// Add consolidated ATTR_GROUPS attribute if requested
+				if (allGroupsRequested && !allGroups.isEmpty()) {
+					AttributeBuilder attrBuilder = new AttributeBuilder();
+					attrBuilder.setName(ATTR_GROUPS);
+					attrBuilder.addValue(new ArrayList<>(allGroups));
+					builder.addAttribute(attrBuilder.build());
+				}
+
+				// Add consolidated ATTR_PROJECTS attribute if requested
+				if (allProjectsRequested && !allProjects.isEmpty()) {
+					AttributeBuilder attrBuilder = new AttributeBuilder();
+					attrBuilder.setName(ATTR_PROJECTS);
+					attrBuilder.addValue(new ArrayList<>(allProjects));
 					builder.addAttribute(attrBuilder.build());
 				}
 			}
@@ -878,6 +931,16 @@ public class UserProcessing extends ObjectProcessing {
 						addSSHKey(uid, sshKeys, addValue);
 					}
 				}
+			}
+
+			// Handle ATTR_GROUPS delta changes - supports format "id#accessLevel" or just "id"
+			if (ATTR_GROUPS.equals(attrDelta.getName())) {
+				processMembershipAttributeForDelta(attrDelta, uid, true);
+			}
+
+			// Handle ATTR_PROJECTS delta changes - supports format "id#accessLevel" or just "id"
+			if (ATTR_PROJECTS.equals(attrDelta.getName())) {
+				processMembershipAttributeForDelta(attrDelta, uid, false);
 			}
 		}
 
@@ -1125,4 +1188,100 @@ public class UserProcessing extends ObjectProcessing {
 			}
 		}
 	}
+
+	/**
+	 * Helper method to process membership attributes during create operations.
+	 *
+	 * @param attr The attribute to process
+	 * @param uid The user ID
+	 * @param isGroup Whether this is for groups (true) or projects (false)
+	 * @param fixedAccessLevel Fixed access level to use for all values, or null to resolve per value
+	 */
+	private void processMembershipAttributeForCreate(Attribute attr, Uid uid, boolean isGroup, Integer fixedAccessLevel) {
+		List<Object> vals = attr.getValue();
+		if (vals != null && !vals.isEmpty()) {
+			for (Object value : vals) {
+				if (value != null) {
+					String strValue = (String) value;
+					String entityId = extractEntityId(strValue);
+					int accessLevel = (fixedAccessLevel != null) ? fixedAccessLevel : resolveAccessLevel(strValue, attr.getName());
+					addMemberToGroupOrProject(uid.getUidValue(), entityId, accessLevel, isGroup);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Helper method to process membership attributes that support "id#accessLevel" format during delta operations.
+	 * Handles access level changes intelligently by detecting when the same entity ID is being removed and added.
+	 */
+	private void processMembershipAttributeForDelta(AttributeDelta attrDelta, Uid uid, boolean isGroup) {
+		List<Object> addValues = attrDelta.getValuesToAdd();
+		List<Object> removeValues = attrDelta.getValuesToRemove();
+
+		// Collect entity IDs being removed and added
+		Map<String, Integer> toAdd = new HashMap<>(); // entityId -> accessLevel
+		Set<String> toRemove = new HashSet<>();
+
+		// Process removals
+		if (removeValues != null && !removeValues.isEmpty()) {
+			for (Object removeValue : removeValues) {
+				if (removeValue != null) {
+					String entityId = extractEntityId((String) removeValue);
+					toRemove.add(entityId);
+				}
+			}
+		}
+
+		// Process additions
+		if (addValues != null && !addValues.isEmpty()) {
+			for (Object addValue : addValues) {
+				if (addValue != null) {
+					String strValue = (String) addValue;
+					int accessLevel = resolveAccessLevel(strValue, attrDelta.getName());
+					String entityId = extractEntityId(strValue);
+					toAdd.put(entityId, accessLevel);
+				}
+			}
+		}
+
+		// Process the collected changes using existing logic
+		if (!toAdd.isEmpty() || !toRemove.isEmpty()) {
+			processMembershipChanges(uid, toAdd, toRemove, isGroup);
+		}
+	}
+
+	/**
+	 * Resolves the access level for a given value, supporting "id#accessLevel" format.
+	 *
+	 * @param value The value which may contain "id#accessLevel" or just "id"
+	 * @param attributeName The attribute name for logging purposes
+	 * @return The resolved access level
+	 */
+	private int resolveAccessLevel(String value, String attributeName) {
+		int accessLevel = configuration.getDefaultAccessLevel();
+
+		if (value.contains("#")) {
+			String[] parts = value.split("#", 2);
+			try {
+				accessLevel = Integer.parseInt(parts[1]);
+			} catch (NumberFormatException e) {
+				LOGGER.warn("Invalid access level format in {0}: {1}, using configured default level {2}",
+						attributeName, value, configuration.getDefaultAccessLevel());
+			}
+		}
+
+		return accessLevel;
+	}
+
+	/**
+	 * Extracts the entity ID from a value, handling "id#accessLevel" format.
+	 *
+	 * @param value The value which may contain "id#accessLevel" or just "id"
+	 * @return The entity ID part
+	 */
+	private String extractEntityId(String value) {
+		return value.contains("#") ? value.split("#", 2)[0] : value;
+	}
+
 }

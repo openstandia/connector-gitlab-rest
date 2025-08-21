@@ -47,6 +47,9 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 	private Integer httpSocketTimeout = 10000; // Default 10 seconds
 	private Integer httpConnectionRequestTimeout = 10000; // Default 10 seconds
 
+	// Default access level for groups and projects (10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner)
+	private Integer defaultAccessLevel = 10; // Default to Guest
+
 	private static final Log LOGGER = Log.getLog(GitlabRestConnector.class);
 
 	@ConfigurationProperty(order = 1, displayMessageKey = "privateToken.display", helpMessageKey = "privateToken.help", required = true, confidential = true)
@@ -183,6 +186,18 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 		this.httpConnectionRequestTimeout = httpConnectionRequestTimeout;
 	}
 
+	// Default access level getters and setters
+	@ConfigurationProperty(order = 14, displayMessageKey = "defaultAccessLevel.display",
+			helpMessageKey = "defaultAccessLevel.help",
+			required = false, confidential = false)
+	public Integer getDefaultAccessLevel() {
+		return defaultAccessLevel;
+	}
+
+	public void setDefaultAccessLevel(Integer defaultAccessLevel) {
+		this.defaultAccessLevel = defaultAccessLevel;
+	}
+
 	@Override
 	public void validate() {
 		LOGGER.info("Processing trough configuration validation procedure.");
@@ -220,6 +235,11 @@ public class GitlabRestConfiguration extends AbstractConfiguration implements St
 
 		if (httpConnectionRequestTimeout != null && httpConnectionRequestTimeout <= 0) {
 			throw new ConfigurationException("HTTP Connection Request Timeout must be greater than 0.");
+		}
+
+		// Validate default access level
+		if (defaultAccessLevel != null && (defaultAccessLevel < 10 || defaultAccessLevel > 50 || defaultAccessLevel % 10 != 0)) {
+			throw new ConfigurationException("Default Access Level must be one of: 10 (Guest), 20 (Reporter), 30 (Developer), 40 (Maintainer), 50 (Owner).");
 		}
 
 		LOGGER.info("Configuration valid");
