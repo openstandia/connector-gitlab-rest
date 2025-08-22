@@ -15,7 +15,6 @@
  */
 package com.evolveum.polygon.connector.gitlab.rest;
 
-import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -668,8 +667,7 @@ public class UserProcessing extends ObjectProcessing {
 		for (int i = 0; i < objectsSSHKeys.length(); i++) {
 			JSONObject jsonObjectMember = objectsSSHKeys.getJSONObject(i);
 			String sshKey = ((String) jsonObjectMember.get("key"));
-			String unescapesshKey = StringEscapeUtils.unescapeXml(sshKey);
-			sshKeys.put(unescapesshKey, ((Integer) jsonObjectMember.get(UID)));
+			sshKeys.put(sshKey, ((Integer) jsonObjectMember.get(UID)));
 		}
 		return sshKeys;
 	}
@@ -971,8 +969,7 @@ public class UserProcessing extends ObjectProcessing {
 						if (!externUid.equals("null")) {
 							StringBuilder sb = new StringBuilder();
 							sb.append(provider).append(":").append(externUid);
-							String unescapeIdentity = StringEscapeUtils.unescapeXml(sb.toString());
-							identities.add(unescapeIdentity);
+							identities.add(sb.toString());
 						}
 					}
 				}

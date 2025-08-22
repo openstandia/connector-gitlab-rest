@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -733,12 +732,7 @@ public class ObjectProcessing {
 
 	protected <T> T addAttr(ConnectorObjectBuilder builder, String attrName, T attrVal) {
 		if (attrVal != null) {
-			if (attrVal instanceof String) {
-				String unescapeAttrVal = StringEscapeUtils.unescapeXml((String) attrVal);
-				builder.addAttribute(attrName, unescapeAttrVal);
-			} else {
-				builder.addAttribute(attrName, attrVal);
-			}
+			builder.addAttribute(attrName, attrVal);
 		}
 		return attrVal;
 	}
