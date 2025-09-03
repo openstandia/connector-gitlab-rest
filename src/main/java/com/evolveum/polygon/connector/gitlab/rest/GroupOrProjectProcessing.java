@@ -28,7 +28,7 @@ public class GroupOrProjectProcessing extends ObjectProcessing {
 	protected static final String ATTR_DESCRIPTION = "description";
 	protected static final String ATTR_VISIBILITY = "visibility";
 	protected static final String ATTR_LFS_ENABLED = "lfs_enabled";
-	 static final String ATTR_REQUEST_ACCESS_ENABLED = "request_access_enabled";
+	protected static final String ATTR_REQUEST_ACCESS_ENABLED = "request_access_enabled";
 
 	public GroupOrProjectProcessing(GitlabRestConfiguration configuration, CloseableHttpClient httpclient) {
 		super(configuration, httpclient);
